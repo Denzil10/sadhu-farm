@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=800, initial-scale=1" />
+<style>
+  :root{
+    --w: 12cm;
+    --h: 15cm;
+    --pad-top: 1.3cm;
+    --pad-bottom: 1.2cm;
+    --pad-x: 1.4cm;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; background:#fff; }
+  body{ display:grid; place-items:center; padding:10px; }
+
+  .label{
+    width:var(--w);
+    height:var(--h);
+    background:url('{{ bg_url|default("base.svg", true) }}') no-repeat center/100% 100%;
+    color:#000;
+    font: 11.5px/1.45 "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding:var(--pad-top) var(--pad-x) var(--pad-bottom);
+    display:flex;
+    align-items:stretch;
+    min-height:var(--h);
+    height:auto;
+  }
+
+  .label-inner{
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    height:100%;
+    gap:14px;
+  }
+
+  h1,h2,h3,p{ margin:0; }
+  .hdr{
+    text-align:center;
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:0.1px;
+  }
+  .section-title{
+    font-weight:800;
+    text-transform:uppercase;
+    margin-bottom:6px;
+    font-size:11px;
+  }
+
+  .ingredients{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .ingredients p{ margin:0; white-space:pre-line; }
+  .small-note{ font-size:10.5px; }
+
+  .facts{
+    border:1px solid #1b1b1b;
+    border-radius:4px;
+    padding:6px 8px 8px;
+    background:#fff;
+  }
+  .facts h3{
+    font-weight:700;
+    text-align:center;
+    margin-bottom:6px;
+    font-size:9.5px;
+    letter-spacing:0.1px;
+  }
+  .facts table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+    font-size:8px;
+  }
+  .facts th,
+  .facts td{
+    border:1px solid #c9c9c9;
+    padding:4px 4px;
+    text-align:left;
+    vertical-align:middle;
+  }
+  .facts thead th{
+    background:#f2f2f2;
+    font-weight:700;
+    text-transform:uppercase;
+    font-size:8.5px;
+    letter-spacing:0.3px;
+  }
+  .facts thead th span{
+    display:block;
+    text-transform:none;
+    font-weight:600;
+    letter-spacing:0;
+    font-size:8px;
+  }
+  .facts thead th:first-child{
+    width:45%;
+  }
+  .facts thead th:nth-child(2){
+    width:32%;
+    text-align:center;
+  }
+  .facts thead th:last-child{
+    width:23%;
+    text-align:right;
+  }
+  .facts tbody td:nth-child(2){
+    text-align:center;
+  }
+  .facts tbody td:last-child{
+    text-align:right;
+  }
+  .facts tbody tr.emphasis td{
+    font-weight:700;
+  }
+  .facts .dv-note{
+    margin:6px 0 0;
+    font-size:8px;
+    text-align:center;
+    opacity:0.8;
+  }
+  .unit-price{
+    margin-top:6px;
+    font-size:10px;
+    text-align:right;
+    font-weight:600;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:6px 10px;
+    font-size:10px;
+  }
+  .grid div span{ opacity:0.7; }
+
+  .foot{
+    border-top:1px dashed #000;
+    padding-top:6px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    font-size:10px;
+    margin-top:auto;
+  }
+
+  .lic-row{
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:8px;
+  }
+  .lic-row img{
+    height:22px;
+    width:auto;
+  }
+
+  @media print {
+    @page { size: 12cm 15cm; margin: 0; }
+    body{ padding:0; }
+  }
+</style>
+</head>
+<body>
+  <article class="label">
+    <div class="label-inner">
+      <!-- Ingredients -->
+      <section class="ingredients">
+        <div class="section-title">Ingredients</div>
+        <p>{{ ing }}</p>
+        <p class="small-note">(No added preservatives or artificial flavoring)</p>
+        <div><strong>CONTAINS:</strong> {{ cont }}</div>
+        <div><strong>MAY CONTAIN:</strong> {{ may }}</div>
+      </section>
+
+      <!-- Nutrition Facts -->
+      <section class="facts">
+        <h3>Nutrition Facts (100g)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Nutrition Information<br><span>Per 100g</span></th>
+              <th>Amount</th>
+              <th>% Daily Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Energy</td>              <td>{{ energy_amt }} kcal</td>            <td>{{ energy_dv }}</td></tr>
+            <tr><td>Protein</td>             <td>{{ protein_amt }} g</td>              <td>{{ protein_dv }}</td></tr>
+            <tr><td>Total Fat</td>           <td>{{ fat_total_amt }} g</td>            <td>{{ fat_total_dv }}</td></tr>
+            <tr><td>Saturated Fat</td>       <td>{{ fat_sat_amt }} g</td>              <td>{{ fat_sat_dv }}</td></tr>
+            <tr><td>Trans Fat</td>           <td>{{ fat_trans_amt }} g</td>            <td>{{ fat_trans_dv }}</td></tr>
+            <tr><td>Cholesterol</td>         <td>{{ chol_amt }} mg</td>                <td>{{ chol_dv }}</td></tr>
+            <tr><td>Total Carbs</td>         <td>{{ carb_total_amt }} g</td>           <td>{{ carb_total_dv }}</td></tr>
+            <tr class="emphasis"><td>Total Sugars</td>    <td>{{ sugar_total_amt }} g</td> <td>{{ sugar_total_dv }}</td></tr>
+            <tr><td>Added Sugars</td>        <td>{{ sugar_added_amt }} g</td>          <td>{{ sugar_added_dv }}</td></tr>
+            <tr><td>Dietary Fiber</td>       <td>{{ fiber_amt }} g</td>                <td>{{ fiber_dv }}</td></tr>
+            <tr class="emphasis"><td>Sodium</td>          <td>{{ sodium_amt }} mg</td>  <td>{{ sodium_dv }}</td></tr>
+          </tbody>
+        </table>
+        <p class="dv-note">* % Daily Values are based on a 2000 kcal diet.</p>
+        <div class="unit-price">Unit Price: ₹ {{ price }} per kg</div>
+      </section>
+
+      <!-- Batch + Dates + Manufacturing -->
+      <section class="grid">
+        <div><span>Batch Code:</span> <strong>{{ batch }}</strong></div>
+        <div><span>Mfg Date:</span> <strong>{{ mfg }}</strong></div>
+        <div><span>Expiry (Use By):</span> <strong>{{ expiry }}</strong></div>
+        <div><span>Country of Origin:</span> <strong>India</strong></div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="foot">
+        <div><strong>Manufactured & Packed by:</strong><br>{{ maker }}<br>{{ addr }}</div>
+        <div class="lic-row">
+          <img src="{{ logo_url|default('logo.png', true) }}" alt="Company Logo">
+          <div><strong>FSSAI LIC:</strong> 11224312000494</div>
+        </div>
+      </footer>
+    </div>
+  </article>
+</body>
+</html>

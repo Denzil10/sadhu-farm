@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sadhu Farm Label Generator</title>
+  <style>
+    :root{
+      color-scheme: light;
+      --accent: #2b5a68;
+      --accent-dark: #1f414b;
+      --bg: #f3f5f7;
+      --panel: #ffffff;
+      --border: #d6dbe0;
+      --text: #1b1f23;
+      --muted: #5a626a;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font: 14px/1.4 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+    header{
+      background:var(--accent);
+      color:#fff;
+      padding:18px clamp(16px,5vw,48px);
+    }
+    header h1{
+      margin:0;
+      font-size:20px;
+      letter-spacing:0.3px;
+    }
+    nav.tabs{
+      display:flex;
+      gap:12px;
+      margin-top:12px;
+    }
+    .tab{
+      padding:10px 16px;
+      border-radius:8px 8px 0 0;
+      background:rgba(255,255,255,0.2);
+      font-weight:600;
+      letter-spacing:0.2px;
+    }
+    .tab.active{
+      background:#fff;
+      color:var(--accent-dark);
+    }
+    main{
+      padding:24px clamp(16px,4vw,48px);
+      max-width:940px;
+      margin:0 auto;
+    }
+    form{
+      display:flex;
+      flex-direction:column;
+      gap:24px;
+    }
+    section.panel{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:20px;
+      box-shadow:0 6px 16px rgba(18,41,56,0.06);
+    }
+    section.panel h2{
+      margin:0 0 16px;
+      font-size:16px;
+      letter-spacing:0.15px;
+      color:var(--accent-dark);
+    }
+    .fields{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap:16px;
+    }
+    label{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      font-weight:600;
+      color:var(--muted);
+    }
+    input[type="text"],
+    textarea{
+      font: inherit;
+      padding:9px 11px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:#fff;
+      transition:border-color 0.2s ease, box-shadow 0.2s ease;
+      resize: vertical;
+      min-height:42px;
+    }
+    textarea{
+      min-height:88px;
+    }
+    input[type="text"]:focus,
+    textarea:focus{
+      outline:none;
+      border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(43,90,104,0.15);
+    }
+    .alert{
+      border-radius:10px;
+      padding:14px 18px;
+      background:#fff2f2;
+      color:#8f1a1a;
+      border:1px solid #ebc4c4;
+      font-weight:500;
+    }
+    .actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:12px;
+      align-items:center;
+    }
+    button{
+      font: inherit;
+      font-weight:600;
+      border:0;
+      border-radius:999px;
+      padding:11px 24px;
+      cursor:pointer;
+      color:#fff;
+      background:var(--accent);
+      box-shadow:0 8px 20px rgba(43,90,104,0.18);
+      transition:transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    button:hover{
+      transform:translateY(-1px);
+      background:var(--accent-dark);
+      box-shadow:0 10px 22px rgba(31,65,75,0.18);
+    }
+    footer{
+      margin-top:28px;
+      font-size:12px;
+      color:var(--muted);
+      text-align:center;
+    }
+    @media (max-width:600px){
+      header h1{ font-size:18px; }
+      section.panel{ padding:16px; }
+      .actions{ flex-direction:column; align-items:stretch; }
+      button{ width:100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sadhu Farm Label Generator</h1>
+    <nav class="tabs">
+      <span class="tab active">Label Generator</span>
+    </nav>
+  </header>
+  <main>
+    <form method="post">
+      {% if error %}
+        <div class="alert">{{ error }}</div>
+      {% endif %}
+
+      {% for title, fields in field_groups %}
+        <section class="panel">
+          <h2>{{ title }}</h2>
+          <div class="fields">
+            {% for field in fields %}
+              <label for="{{ field.name }}">
+                {{ field.label }}
+                {% if field.type == "textarea" %}
+                  <textarea id="{{ field.name }}" name="{{ field.name }}" rows="{{ field.rows|default(3) }}" required>{{ values.get(field.name, "") }}</textarea>
+                {% else %}
+                  <input type="text" id="{{ field.name }}" name="{{ field.name }}" value="{{ values.get(field.name, "") }}" required>
+                {% endif %}
+              </label>
+            {% endfor %}
+          </div>
+        </section>
+      {% endfor %}
+
+      <div class="actions">
+        <span>PDF export uses wkhtmltopdf (install separately and set <code>WKHTMLTOPDF_BINARY</code> if needed).</span>
+        <button type="submit" formtarget="_blank">Generate PDF</button>
+      </div>
+    </form>
+    <footer>
+      Generated PDFs use the 12&nbsp;cm × 15&nbsp;cm cocoa label template.
+    </footer>
+  </main>
+</body>
+</html>
