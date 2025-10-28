@@ -7,9 +7,9 @@
   :root{
     --w: 12cm;
     --h: 15cm;
-    --pad-top: 2.0cm;
-    --pad-bottom: 1.8cm;
-    --pad-x: 3.5cm;
+    --pad-top: 1.3cm;
+    --pad-bottom: 1.2cm;
+    --pad-x: 1.4cm;
   }
 
   *{ box-sizing:border-box; }
@@ -298,12 +298,12 @@
 </head>
 <body>
   <article class="label">
-    <img class="bg-image" src="{{ bg_url }}" alt="">
+    <img class="bg-image" src="/Users/denzil/Projects/misc/grind/sadhu-farm/assets/base.png" alt="">
     <div class="label-inner">
       <!-- Description -->
-      {% if desc %}
-      <section class="desc">{{ desc }}</section>
-      {% endif %}
+      
+      <section class="desc">Indulge in the rich, decadent pleasure of our cocoa couverture — a delightful treat crafted with care on our family farm.</section>
+      
 
       <!-- Ingredients and Nutrition Facts Side by Side -->
       <table class="ingredients-nutrition-container">
@@ -311,10 +311,10 @@
           <!-- Ingredients -->
           <td class="ingredients">
             <div class="section-title">Ingredients</div>
-            <p>{{ ing }}</p>
+            <p>Cocoa nibs (65%), Cane sugar, Cocoa butter, Sunflower lecithin, Vanilla bean</p>
             <p class="small-note">(No added preservatives or artificial flavoring)</p>
-            <div><strong>CONTAINS:</strong> {{ cont }}</div>
-            <div><strong>MAY CONTAIN:</strong> {{ may }}</div>
+            <div><strong>CONTAINS:</strong> Milk, soy</div>
+            <div><strong>MAY CONTAIN:</strong> Tree nuts, wheat</div>
           </td>
 
           <!-- Nutrition Facts -->
@@ -328,21 +328,18 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td>Energy</td>              <td>{{ energy_amt }} kcal</td>            <td>{{ energy_dv }}</td></tr>
-                <tr><td>Protein</td>             <td>{{ protein_amt }} g</td>              <td>{{ protein_dv }}</td></tr>
-                <tr><td>Total Fat</td>           <td>{{ fat_total_amt }} g</td>            <td>{{ fat_total_dv }}</td></tr>
-                <tr><td>Saturated Fat</td>       <td>{{ fat_sat_amt }} g</td>              <td>{{ fat_sat_dv }}</td></tr>
-                <tr><td>Trans Fat</td>           <td>{{ fat_trans_amt }} g</td>            <td>{{ fat_trans_dv }}</td></tr>
-                <tr><td>Cholesterol</td>         <td>{{ chol_amt }} mg</td>                <td>{{ chol_dv }}</td></tr>
-                <tr><td>Total Carbs</td>         <td>{{ carb_total_amt }} g</td>           <td>{{ carb_total_dv }}</td></tr>
-                <tr class="emphasis"><td>Total Sugars</td>    <td>{{ sugar_total_amt }} g</td> <td>{{ sugar_total_dv }}</td></tr>
-                <tr><td>Added Sugars</td>        <td>{{ sugar_added_amt }} g</td>          <td>{{ sugar_added_dv }}</td></tr>
-                <tr><td>Dietary Fiber</td>       <td>{{ fiber_amt }} g</td>                <td>{{ fiber_dv }}</td></tr>
-                <tr class="emphasis"><td>Sodium</td>          <td>{{ sodium_amt }} mg</td>  <td>{{ sodium_dv }}</td></tr>
-                {% if custom_nutrition %}
-                <tr><td colspan="3" style="border-top: 1px solid #c9c9c9; padding-top: 4px; font-weight: 600;">Additional Nutrients</td></tr>
-                <tr><td colspan="3" style="font-size: 6px; line-height: 1.2;">{{ custom_nutrition }}</td></tr>
-                {% endif %}
+                <tr><td>Energy</td>              <td>608 kcal</td>            <td>30%</td></tr>
+                <tr><td>Protein</td>             <td>6.2 g</td>              <td>12%</td></tr>
+                <tr><td>Total Fat</td>           <td>49.0 g</td>            <td>75%</td></tr>
+                <tr><td>Saturated Fat</td>       <td>33.6 g</td>              <td>168%</td></tr>
+                <tr><td>Trans Fat</td>           <td>0 g</td>            <td>0%</td></tr>
+                <tr><td>Cholesterol</td>         <td>0 mg</td>                <td>0%</td></tr>
+                <tr><td>Total Carbs</td>         <td>42.4 g</td>           <td>14%</td></tr>
+                <tr class="emphasis"><td>Total Sugars</td>    <td>25.5 g</td> <td>51%</td></tr>
+                <tr><td>Added Sugars</td>        <td>25.5 g</td>          <td>51%</td></tr>
+                <tr><td>Dietary Fiber</td>       <td>11.0 g</td>                <td>44%</td></tr>
+                <tr class="emphasis"><td>Sodium</td>          <td>46 mg</td>  <td>2%</td></tr>
+                
               </tbody>
             </table>
             <p class="dv-note">* % Daily Values are based on a 2000 kcal diet.</p>
@@ -353,12 +350,12 @@
       <!-- Batch + Dates + Manufacturing -->
       <section class="grid">
         <div class="grid-row">
-          <div class="grid-cell"><span>Mfg Date:</span> <strong>{{ mfg }}</strong></div>
-          <div class="grid-cell"><span>Unit Price:</span> <strong>₹ {{ price }} per kg</strong></div>
+          <div class="grid-cell"><span>Mfg Date:</span> <strong>2024-09-15</strong></div>
+          <div class="grid-cell"><span>Unit Price:</span> <strong>₹ 520 per kg</strong></div>
         </div>
         <div class="grid-row">
-          <div class="grid-cell"><span>Expiry (Use By):</span> <strong>{{ expiry }}</strong></div>
-          <div class="grid-cell"><span>Batch Code:</span> <strong>{{ batch }}</strong></div>
+          <div class="grid-cell"><span>Expiry (Use By):</span> <strong>2025-03-15</strong></div>
+          <div class="grid-cell"><span>Batch Code:</span> <strong>BC-2409-07</strong></div>
         </div>
       </section>
 
@@ -367,11 +364,11 @@
         <div class="foot-content">
           <div class="foot-left">
             <div><strong>Manufactured & Packed by:</strong></div>
-            <div>{{ addr }}</div>
+            <div>42 Bean Estate<br>Pollachi, Tamil Nadu 642001<br>India</div>
           </div>
           <div class="foot-right">
             <div class="lic-row">
-              <img src="{{ logo_url|default('logo.png', true) }}" alt="Company Logo">
+              <img src="/Users/denzil/Projects/misc/grind/sadhu-farm/assets/fssai.png" alt="Company Logo">
               <span class="lic-text"><strong>FSSAI LIC:</strong> 11224312000494</span>
             </div>
             <div><strong>Country of Origin:</strong> India</div>

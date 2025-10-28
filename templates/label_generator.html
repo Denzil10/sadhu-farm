@@ -53,17 +53,16 @@
       max-width:940px;
       margin:0 auto;
     }
-    form{
-      display:flex;
-      flex-direction:column;
-      gap:24px;
-    }
+    form{ display:flex; flex-direction:column; gap:24px; }
     section.panel{
       background:var(--panel);
       border:1px solid var(--border);
       border-radius:12px;
       padding:20px;
       box-shadow:0 6px 16px rgba(18,41,56,0.06);
+    }
+    section.panel.tight{
+      padding:18px;
     }
     section.panel h2{
       margin:0 0 16px;
@@ -82,6 +81,107 @@
       gap:6px;
       font-weight:600;
       color:var(--muted);
+    }
+    .quick-edit{
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+    .preset-controls{
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      align-items:flex-end;
+    }
+    .preset-controls .control-block{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      flex:1 1 220px;
+      min-width:220px;
+    }
+    .preset-controls select{
+      font: inherit;
+      padding:9px 11px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:#fff;
+      height:42px;
+    }
+    .preset-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .preset-actions button{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      font: inherit;
+      font-weight:600;
+      border-radius:999px;
+      padding:10px 18px;
+      cursor:pointer;
+      background:var(--accent);
+      color:#fff;
+      box-shadow:0 6px 16px rgba(43,90,104,0.18);
+      transition:transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .preset-actions button.ghost{
+      background:transparent;
+      color:var(--accent-dark);
+      box-shadow:inset 0 0 0 1px var(--accent);
+    }
+    .preset-actions button:hover{
+      transform:translateY(-1px);
+      background:var(--accent-dark);
+      box-shadow:0 10px 22px rgba(31,65,75,0.18);
+    }
+    .preset-actions button.ghost:hover{
+      background:rgba(43,90,104,0.08);
+      box-shadow:inset 0 0 0 1px var(--accent-dark);
+      transform:none;
+    }
+    .quick-hint{
+      font-size:13px;
+      color:var(--muted);
+    }
+    .collapse-wrapper details{
+      margin:0;
+    }
+    .collapse-wrapper summary{
+      cursor:pointer;
+      font-weight:600;
+      color:var(--accent-dark);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      list-style:none;
+    }
+    .collapse-wrapper summary::-webkit-details-marker{
+      display:none;
+    }
+    .collapse-wrapper summary:after{
+      content:"▾";
+      font-size:16px;
+      line-height:1;
+      color:var(--muted);
+      transition:transform 0.2s ease;
+    }
+    .collapse-wrapper details[open] summary:after{
+      transform:rotate(180deg);
+    }
+    .collapse-body{
+      margin-top:18px;
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+    .group-block h3{
+      margin:0 0 12px;
+      font-size:15px;
+      color:var(--accent-dark);
     }
     input[type="text"],
     textarea{
@@ -113,9 +213,10 @@
     }
     .actions{
       display:flex;
-      justify-content:flex-end;
+      justify-content:space-between;
       gap:12px;
       align-items:center;
+      flex-wrap:wrap;
     }
     button{
       font: inherit;
@@ -134,17 +235,148 @@
       background:var(--accent-dark);
       box-shadow:0 10px 22px rgba(31,65,75,0.18);
     }
+    .buttons{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .ghost{
+      background:transparent;
+      color:var(--accent-dark);
+      box-shadow:inset 0 0 0 1px var(--accent);
+    }
+    .ghost:hover{
+      background:rgba(43,90,104,0.1);
+      box-shadow:inset 0 0 0 1px var(--accent-dark);
+      transform:none;
+    }
+    .preview-pane{
+      margin-top:32px;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:16px;
+      box-shadow:0 12px 30px rgba(25,45,60,0.08);
+      padding:18px;
+    }
+    .preview-pane h2{
+      margin:0 0 16px;
+      font-size:16px;
+      color:var(--accent-dark);
+    }
+    iframe{
+      width:100%;
+      min-height:720px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+    }
     footer{
       margin-top:28px;
       font-size:12px;
       color:var(--muted);
       text-align:center;
     }
+    /* Nutrition fields side-by-side layout */
+    .nutrition-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .nutrition-row label {
+      margin-bottom: 0;
+    }
+    
+    .nutrition-row label:first-child {
+      grid-column: 1;
+    }
+    
+    .nutrition-row label:last-child {
+      grid-column: 2;
+    }
+    
+    /* Date picker styling */
+    input[type="date"] {
+      font-family: inherit;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+    }
+    
+    input[type="date"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43,90,104,0.15);
+    }
+    
+    /* Dynamic nutrition fields */
+    .nutrition-container {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    
+    .nutrition-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .add-nutrition-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .remove-nutrition-btn {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    
+    .nutrition-item {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 12px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    
+    .nutrition-item label {
+      margin-bottom: 0;
+    }
+    
     @media (max-width:600px){
       header h1{ font-size:18px; }
       section.panel{ padding:16px; }
       .actions{ flex-direction:column; align-items:stretch; }
       button{ width:100%; }
+      .nutrition-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .nutrition-item {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
     }
   </style>
 </head>
@@ -156,19 +388,38 @@
     </nav>
   </header>
   <main>
-    <form method="post">
+    <form method="post" id="label-form" novalidate>
+      <input type="hidden" id="selected-preset" name="selected_preset" value="{{ selected_preset }}">
       {% if error %}
         <div class="alert">{{ error }}</div>
       {% endif %}
 
-      {% for title, fields in field_groups %}
-        <section class="panel">
-          <h2>{{ title }}</h2>
+      <section class="panel tight">
+        <h2>Quick Edit</h2>
+        <div class="quick-edit">
+          <div class="preset-controls">
+            <label class="control-block" for="preset-select">
+              Variant Preset
+              <select id="preset-select">
+                <option value="">Select preset</option>
+                {% for name, data in presets|dictsort %}
+                  <option value="{{ name }}" {% if name == selected_preset %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="preset-actions">
+              <button type="button" class="ghost" id="clear-preset">Clear</button>
+              <button type="button" id="save-preset-btn">Save Preset</button>
+            </div>
+          </div>
+          <p class="quick-hint">Pick a variant and tweak batch details here. Use "Edit Preset Details" below only when you need to modify the full preset data.</p>
           <div class="fields">
-            {% for field in fields %}
+            {% for field in quick_fields %}
               <label for="{{ field.name }}">
                 {{ field.label }}
-                {% if field.type == "textarea" %}
+                {% if field.type == "date" %}
+                  <input type="date" id="{{ field.name }}" name="{{ field.name }}" value="{{ values.get(field.name, "") }}" required>
+                {% elif field.type == "textarea" %}
                   <textarea id="{{ field.name }}" name="{{ field.name }}" rows="{{ field.rows|default(3) }}" required>{{ values.get(field.name, "") }}</textarea>
                 {% else %}
                   <input type="text" id="{{ field.name }}" name="{{ field.name }}" value="{{ values.get(field.name, "") }}" required>
@@ -176,17 +427,223 @@
               </label>
             {% endfor %}
           </div>
-        </section>
-      {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel collapse-wrapper">
+        <details {% if not presets %}open{% endif %}>
+          <summary>Edit Preset Details (Advanced)</summary>
+          <div class="collapse-body">
+            {% for title, fields in field_groups %}
+              <div class="group-block">
+                <h3>{{ title }}</h3>
+                {% if title == "Nutrition (Amount per 100g)" %}
+                  <div class="nutrition-container">
+                    <div class="nutrition-header">
+                      <h4>Nutrition Information</h4>
+                      <button type="button" class="add-nutrition-btn" onclick="addNutritionField()">+ Add Custom Field</button>
+                    </div>
+                    <div id="nutrition-fields">
+                      {% for field in fields %}
+                        <div class="nutrition-row">
+                          <label for="{{ field.name }}">
+                            {{ field.label }}
+                            <input type="text" id="{{ field.name }}" name="{{ field.name }}" value="{{ values.get(field.name, "") }}" required>
+                          </label>
+                          <label for="{{ field.name.replace('_amt', '_dv') }}">
+                            {{ field.label.replace('(g)', '%DV').replace('(kcal)', '%DV').replace('(mg)', '%DV') }}
+                            <input type="text" id="{{ field.name.replace('_amt', '_dv') }}" name="{{ field.name.replace('_amt', '_dv') }}" value="{{ values.get(field.name.replace('_amt', '_dv'), '') }}" required>
+                          </label>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% elif title == "Nutrition (% Daily Value)" %}
+                  <!-- This section is now handled above -->
+                {% else %}
+                  <div class="fields">
+                    {% for field in fields %}
+                      <label for="{{ field.name }}">
+                        {{ field.label }}
+                        {% if field.type == "date" %}
+                          <input type="date" id="{{ field.name }}" name="{{ field.name }}" value="{{ values.get(field.name, "") }}" required>
+                        {% elif field.type == "textarea" %}
+                          <textarea id="{{ field.name }}" name="{{ field.name }}" rows="{{ field.rows|default(3) }}" required>{{ values.get(field.name, "") }}</textarea>
+                        {% else %}
+                          <input type="text" id="{{ field.name }}" name="{{ field.name }}" value="{{ values.get(field.name, "") }}" required>
+                        {% endif %}
+                      </label>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </details>
+      </section>
 
       <div class="actions">
-        <span>PDF export uses wkhtmltopdf (install separately and set <code>WKHTMLTOPDF_BINARY</code> if needed).</span>
-        <button type="submit" formtarget="_blank">Generate PDF</button>
+        <div class="buttons">
+          <button type="submit" formaction="/generate_single_pdf" formtarget="_blank">Single PDF</button>
+          <button type="submit" formaction="/generate_single_png" formtarget="_blank">Single PNG</button>
+          <button type="submit" formaction="/generate_single_jpg" formtarget="_blank">Single JPG</button>
+        </div>
       </div>
     </form>
+    <section class="preview-pane">
+      <h2>Live Preview</h2>
+      <iframe id="label-preview" title="Label preview" srcdoc={{ preview_html|tojson|safe }}></iframe>
+    </section>
     <footer>
       Generated PDFs use the 12&nbsp;cm × 15&nbsp;cm cocoa label template.
     </footer>
   </main>
+  <script>
+    /* eslint-disable */
+    const presets = {{ presets|tojson }};
+    /* eslint-enable */
+    const form = document.getElementById("label-form");
+    // Preview buttons removed
+    const previewFrame = document.getElementById("label-preview");
+    const presetSelect = document.getElementById("preset-select");
+    const selectedPresetInput = document.getElementById("selected-preset");
+    const savePresetBtn = document.getElementById("save-preset-btn");
+    const clearPresetBtn = document.getElementById("clear-preset");
+    const collapseDetails = document.querySelector(".collapse-wrapper details");
+
+    function setFieldValue(field, value) {
+      if (!field) return;
+      if (field instanceof RadioNodeList) {
+        field.value = value ?? "";
+        return;
+      }
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+        field.value = value ?? "";
+      }
+    }
+
+    // Dynamic nutrition fields
+    let nutritionFieldCounter = 0;
+
+    function addNutritionField() {
+      const container = document.getElementById('nutrition-fields');
+      const fieldId = `custom_nutrition_${nutritionFieldCounter++}`;
+      
+      const nutritionItem = document.createElement('div');
+      nutritionItem.className = 'nutrition-item';
+      nutritionItem.innerHTML = `
+        <label for="${fieldId}_name">
+          Nutrient Name
+          <input type="text" id="${fieldId}_name" name="custom_nutrition[${nutritionFieldCounter}][name]" placeholder="e.g., Vitamin C" required>
+        </label>
+        <label for="${fieldId}_amount">
+          Amount
+          <input type="text" id="${fieldId}_amount" name="custom_nutrition[${nutritionFieldCounter}][amount]" placeholder="e.g., 15 mg" required>
+        </label>
+        <button type="button" class="remove-nutrition-btn" onclick="removeNutritionField(this)">Remove</button>
+      `;
+      
+      container.appendChild(nutritionItem);
+    }
+
+    function removeNutritionField(button) {
+      button.parentElement.remove();
+    }
+
+    function applyPreset(name) {
+      const data = presets[name];
+      if (!data) return;
+      Object.entries(data).forEach(([key, value]) => {
+        const field = form.elements.namedItem(key);
+        if (!field) return;
+        setFieldValue(field, value);
+      });
+      // Don't automatically expand details - let user choose when to edit
+      updatePreview();
+    }
+
+    async function updatePreview() {
+      const formData = new FormData(form);
+      try {
+        const response = await fetch("/preview", {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        const html = await response.text();
+        previewFrame.srcdoc = html;
+      } catch (err) {
+        console.error("Preview error:", err);
+        alert("Could not refresh preview. Check console for details.");
+      }
+    }
+
+    async function updateStickerSheetPreview() {
+      const formData = new FormData(form);
+      try {
+        const response = await fetch("/preview_sheet", {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        const html = await response.text();
+        previewFrame.srcdoc = html;
+      } catch (err) {
+        console.error("Sticker sheet preview error:", err);
+        alert("Could not refresh sticker sheet preview. Check console for details.");
+      }
+    }
+
+    async function savePreset() {
+      const formData = new FormData(form);
+      try {
+        savePresetBtn.disabled = true;
+        const response = await fetch("/save_preset", {
+          method: "POST",
+          body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+          const message = payload && payload.error ? payload.error : "Could not save preset.";
+          alert(message);
+          return;
+        }
+        alert(`Preset “${payload.product_name}” saved.`);
+        window.location.search = `?preset=${encodeURIComponent(payload.product_name)}`;
+      } catch (err) {
+        console.error("Save preset error:", err);
+        alert("Could not save preset. Check console for details.");
+      } finally {
+        savePresetBtn.disabled = false;
+      }
+    }
+
+
+    if (presetSelect) {
+      presetSelect.addEventListener("change", (event) => {
+        const name = event.target.value;
+        selectedPresetInput.value = name;
+        if (name && presets[name]) {
+          applyPreset(name);
+          updatePreview();
+        }
+      });
+    }
+
+    if (clearPresetBtn) {
+      clearPresetBtn.addEventListener("click", () => {
+        presetSelect.value = "";
+        selectedPresetInput.value = "";
+      });
+    }
+
+    if (savePresetBtn) {
+      savePresetBtn.addEventListener("click", savePreset);
+    }
+
+
+    previewBtn.addEventListener("click", updatePreview);
+    previewSheetBtn.addEventListener("click", updateStickerSheetPreview);
+  </script>
 </body>
 </html>
