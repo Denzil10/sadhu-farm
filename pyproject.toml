@@ -1,0 +1,6 @@
+[project]
+name = "sadhu-farm"
+version = "0.1.0"
+description = "Sadhu Farm Label Generator"
+requires-python = ">=3.13"
+
