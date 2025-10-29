@@ -213,7 +213,7 @@
     }
     .actions{
       display:flex;
-      justify-content:space-between;
+      justify-content:center;
       gap:12px;
       align-items:center;
       flex-wrap:wrap;
@@ -223,12 +223,13 @@
       font-weight:600;
       border:0;
       border-radius:999px;
-      padding:11px 24px;
+      padding:16px 32px;
       cursor:pointer;
       color:#fff;
       background:var(--accent);
       box-shadow:0 8px 20px rgba(43,90,104,0.18);
       transition:transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      font-size:16px;
     }
     button:hover{
       transform:translateY(-1px);
@@ -250,26 +251,6 @@
       background:rgba(43,90,104,0.1);
       box-shadow:inset 0 0 0 1px var(--accent-dark);
       transform:none;
-    }
-    .preview-pane{
-      margin-top:32px;
-      background:#fff;
-      border:1px solid var(--border);
-      border-radius:16px;
-      box-shadow:0 12px 30px rgba(25,45,60,0.08);
-      padding:18px;
-    }
-    .preview-pane h2{
-      margin:0 0 16px;
-      font-size:16px;
-      color:var(--accent-dark);
-    }
-    iframe{
-      width:100%;
-      min-height:720px;
-      border:1px solid var(--border);
-      border-radius:12px;
-      background:#fff;
     }
     footer{
       margin-top:28px;
@@ -484,16 +465,10 @@
 
       <div class="actions">
         <div class="buttons">
-          <button type="submit" formaction="/generate_single_pdf" formtarget="_blank">Single PDF</button>
-          <button type="submit" formaction="/generate_single_png" formtarget="_blank">Single PNG</button>
-          <button type="submit" formaction="/generate_single_jpg" formtarget="_blank">Single JPG</button>
+          <button type="submit" formaction="/generate_single_pdf" formtarget="_blank">Download PDF</button>
         </div>
       </div>
     </form>
-    <section class="preview-pane">
-      <h2>Live Preview</h2>
-      <iframe id="label-preview" title="Label preview" srcdoc={{ preview_html|tojson|safe }}></iframe>
-    </section>
     <footer>
       Generated PDFs use the 12&nbsp;cm × 15&nbsp;cm cocoa label template.
     </footer>
@@ -503,8 +478,6 @@
     const presets = {{ presets|tojson }};
     /* eslint-enable */
     const form = document.getElementById("label-form");
-    // Preview buttons removed
-    const previewFrame = document.getElementById("label-preview");
     const presetSelect = document.getElementById("preset-select");
     const selectedPresetInput = document.getElementById("selected-preset");
     const savePresetBtn = document.getElementById("save-preset-btn");
@@ -559,39 +532,6 @@
         setFieldValue(field, value);
       });
       // Don't automatically expand details - let user choose when to edit
-      updatePreview();
-    }
-
-    async function updatePreview() {
-      const formData = new FormData(form);
-      try {
-        const response = await fetch("/preview", {
-          method: "POST",
-          body: formData
-        });
-        if (!response.ok) throw new Error(`Status ${response.status}`);
-        const html = await response.text();
-        previewFrame.srcdoc = html;
-      } catch (err) {
-        console.error("Preview error:", err);
-        alert("Could not refresh preview. Check console for details.");
-      }
-    }
-
-    async function updateStickerSheetPreview() {
-      const formData = new FormData(form);
-      try {
-        const response = await fetch("/preview_sheet", {
-          method: "POST",
-          body: formData
-        });
-        if (!response.ok) throw new Error(`Status ${response.status}`);
-        const html = await response.text();
-        previewFrame.srcdoc = html;
-      } catch (err) {
-        console.error("Sticker sheet preview error:", err);
-        alert("Could not refresh sticker sheet preview. Check console for details.");
-      }
     }
 
     async function savePreset() {
@@ -625,7 +565,6 @@
         selectedPresetInput.value = name;
         if (name && presets[name]) {
           applyPreset(name);
-          updatePreview();
         }
       });
     }
@@ -640,10 +579,6 @@
     if (savePresetBtn) {
       savePresetBtn.addEventListener("click", savePreset);
     }
-
-
-    previewBtn.addEventListener("click", updatePreview);
-    previewSheetBtn.addEventListener("click", updateStickerSheetPreview);
   </script>
 </body>
 </html>

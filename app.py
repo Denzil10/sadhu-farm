@@ -1,37 +1,16 @@
-from __future__ import annotations
-
-import csv
+# -*- coding: utf-8 -*-
+import base64
 import json
 import os
-import tempfile
-from base64 import b64encode
-from io import BytesIO, StringIO
+from io import BytesIO
 from pathlib import Path
-from typing import Dict, Iterable
+from typing import Dict
 
-from PIL import Image, ImageDraw, ImageFont
-
-import pdfkit
 from flask import Flask, jsonify, render_template, request, send_file
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-from markupsafe import Markup
+from weasyprint import HTML
 
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
-TEMPLATE_NAME = "new_back.html"
-
-
-def _load_template_env() -> Environment:
-    return Environment(
-        loader=FileSystemLoader(str(ASSETS_DIR)),
-        autoescape=select_autoescape(("html", "xml")),
-    )
-
-
-TEMPLATE_ENV = _load_template_env()
-LABEL_TEMPLATE = TEMPLATE_ENV.get_template(TEMPLATE_NAME)
-
-FONT_PATH = ASSETS_DIR / "Inter_18pt-SemiBold.ttf"
 PRESET_FILE = ASSETS_DIR / "presets.json"
 
 DEFAULT_DATA: Dict[str, str] = {
@@ -69,11 +48,10 @@ DEFAULT_DATA: Dict[str, str] = {
     "batch": "BC-2409-07",
     "mfg": "2024-09-15",
     "expiry": "2025-03-15",
-    "maker": "Sadhu Farm Foods Pvt. Ltd.",
-    "addr": "42 Bean Estate\nPollachi, Tamil Nadu 642001\nIndia",
+    "maker": "42 Bean Estate, Pollachi, Tamil Nadu, India",
+    "fssai": "11224312000494",
+    "country": "India",
 }
-
-MULTILINE_FIELDS = {"desc", "ing", "may", "addr"}
 
 QUICK_FIELDS = (
     {"name": "batch", "label": "Batch Code", "type": "text"},
@@ -134,7 +112,8 @@ FIELD_GROUPS = (
         "Manufacturer",
         (
             {"name": "maker", "label": "Manufacturer", "type": "text"},
-            {"name": "addr", "label": "Address", "type": "textarea", "rows": 3},
+            {"name": "fssai", "label": "FSSAI License", "type": "text"},
+            {"name": "country", "label": "Country of Origin", "type": "text"},
         ),
     ),
 )
@@ -145,6 +124,14 @@ ALL_FIELD_NAMES = (
 )
 
 app = Flask(__name__)
+
+
+def image_to_base64(image_path: Path) -> str:
+    """Return the image at image_path encoded as base64 for data URIs."""
+    if not image_path.exists():
+        return ""
+    data = image_path.read_bytes()
+    return base64.b64encode(data).decode("ascii")
 
 
 def load_presets() -> Dict[str, Dict[str, str]]:
@@ -161,6 +148,12 @@ def save_presets(presets: Dict[str, Dict[str, str]]) -> None:
     PRESET_FILE.write_text(json.dumps(presets, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _merge_defaults(overrides: Dict[str, str]) -> Dict[str, str]:
+    merged = DEFAULT_DATA.copy()
+    merged.update({k: v for k, v in overrides.items() if v})
+    return merged
+
+
 def _normalize_preset_row(row: Dict[str, str]) -> Dict[str, str]:
     trimmed = {name: row.get(name, "").strip() for name in ALL_FIELD_NAMES}
     merged = _merge_defaults(trimmed)
@@ -169,498 +162,286 @@ def _normalize_preset_row(row: Dict[str, str]) -> Dict[str, str]:
     return merged
 
 
-@app.route("/assets/<path:filename>")
-def serve_asset(filename):
-    """Serve static assets from the assets directory."""
-    return send_file(ASSETS_DIR / filename)
-
-@app.route("/test")
-def test_bg():
-    """Test background image visibility."""
-    return send_file("simple_test.html")
-
-@app.route("/ultra")
-def ultra_test():
-    """Ultra simple background test."""
-    return send_file("ultra_simple.html")
-
-
-def _escape_multiline(value: str) -> Markup:
-    """Escape user text and preserve line breaks."""
-    if not value:
-        return Markup("")
-    escaped = Markup.escape(value)
-    return Markup("<br>").join(escaped.splitlines())
-
-
-def build_context(form_values: Dict[str, str], for_pdf: bool = False) -> Dict[str, str]:
-    context: Dict[str, str] = {}
-    for key, raw in form_values.items():
-        stripped = raw.strip()
-        if key in MULTILINE_FIELDS:
-            context[key] = _escape_multiline(stripped)
-        else:
-            context[key] = stripped
-
-    # Handle custom nutrition fields
-    custom_nutrition = _process_custom_nutrition(form_values)
-    if custom_nutrition:
-        context["custom_nutrition"] = custom_nutrition
-
-    bg_candidates = ("base.png", "base.png")
-    bg_path = next(
-        (ASSETS_DIR / candidate for candidate in bg_candidates if (ASSETS_DIR / candidate).exists()),
-        None,
-    )
-    if bg_path is None:
-        raise FileNotFoundError("Background frame not found in assets.")
-    if for_pdf:
-        # Use absolute path for wkhtmltopdf
-        context["bg_url"] = str(bg_path.resolve())
-    else:
-        context["bg_url"] = f"/assets/{bg_path.name}"
-
-    logo_candidates = ("logo.png", "fssai.png")
-    logo_path = next(
-        (ASSETS_DIR / candidate for candidate in logo_candidates if (ASSETS_DIR / candidate).exists()),
-        None,
+def generate_label_html(data: Dict[str, str]) -> str:
+    """Generate HTML for a single label with the given data."""
+    # Load base frame and FSSAI logo
+    base_frame = image_to_base64(ASSETS_DIR / "base.png")
+    fssai_logo_b64 = image_to_base64(ASSETS_DIR / "fssai.png")
+    fssai_img_tag = (
+        f'<img class="fssai-logo" src="data:image/png;base64,{fssai_logo_b64}" alt="FSSAI" />'
+        if fssai_logo_b64 else ""
     )
 
-    if logo_path:
-        if for_pdf:
-            # Use absolute path for wkhtmltopdf
-            context["logo_url"] = str(logo_path.resolve())
-        else:
-            context["logo_url"] = f"/assets/{logo_path.name}"
+    # Format nutrition table rows
+    nutrition_rows = []
+    nutrition_fields = [
+        ("Energy", "energy_amt", "energy_dv", "kcal"),
+        ("Protein", "protein_amt", "protein_dv", "g"),
+        ("Total Fat", "fat_total_amt", "fat_total_dv", "g"),
+        ("Saturated Fat", "fat_sat_amt", "fat_sat_dv", "g"),
+        ("Cholesterol", "chol_amt", "chol_dv", "mg"),
+        ("Total Carbs", "carb_total_amt", "carb_total_dv", "g"),
+        ("Total Sugars", "sugar_total_amt", "sugar_total_dv", "g"),
+        ("Added Sugars", "sugar_added_amt", "sugar_added_dv", "g"),
+        ("Dietary Fiber", "fiber_amt", "fiber_dv", "g"),
+        ("Sodium", "sodium_amt", "sodium_dv", "mg"),
+    ]
 
-    font_face = _build_font_face()
-    if font_face:
-        context["font_face"] = font_face
-    return context
+    for name, amt_key, dv_key, unit in nutrition_fields:
+        amt = data.get(amt_key, "")
+        dv = data.get(dv_key, "")
+        if amt or dv:
+            nutrition_rows.append(
+                f'<tr><td>{name}</td><td>{amt} {unit}</td><td>{dv}</td></tr>'
+            )
+
+    nutrition_table = "\n".join(nutrition_rows)
+
+    return f"""
+        <article class="label">
+          <div class="label-inner">
+            <section class="desc">
+              {data.get("desc", "").replace(chr(10), "<br>")}
+            </section>
+            <table class="ingredients-nutrition-container">
+              <tr>
+                <td class="ingredients">
+                  <div class="section-title">Ingredients</div>
+                  <p>{data.get("ing", "").replace(chr(10), "<br>")}</p>
+                  <div><strong>CONTAINS:</strong> {data.get("cont", "")}</div>
+                  <div><strong>MAY CONTAIN:</strong> {data.get("may", "").replace(chr(10), "<br>")}</div>
+                </td>
+                <td class="facts">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Nutrition Facts<br><span>Per 100g</span></th>
+                        <th>Amount</th>
+                        <th>% Daily Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nutrition_table}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            <section class="grid">
+              <div class="grid-row">
+                <div class="grid-cell"><span><strong>Manufactured:</strong></span> {data.get("mfg", "")}</div>
+                <div class="grid-cell"><span><strong>Price:</strong></span> ₹ {data.get("price", "")}</div>
+              </div>
+              <div class="grid-row">
+                <div class="grid-cell"><span><strong>Expiry:</strong></span> {data.get("expiry", "")}</div>
+                <div class="grid-cell"><span><strong>Batch Code:</strong></span> {data.get("batch", "")}</div>
+              </div>
+            </section>
+            <footer class="foot">
+              <div class="foot-content">
+                <div class="foot-left">
+                  <div><strong>Manufactured By:</strong></div>
+                  <div>{data.get("maker", "").replace(chr(10), "<br>")}</div>
+                </div>
+                <div class="foot-right">
+                  <div class="fssai-block">{fssai_img_tag} <strong>LIC:</strong> {data.get("fssai", "")}</div>
+                  <div><strong>Country of Origin:</strong> {data.get("country", "")}</div>
+                </div>
+              </div>
+            </footer>
+          </div>
+        </article>
+    """
 
 
-def render_label_html(context: Dict[str, str]) -> str:
-    return LABEL_TEMPLATE.render(**context)
+def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
+    """Generate full HTML document for PDF generation with multiple labels."""
+    label_markup = generate_label_html(data)
+    labels = "\n".join(label_markup for _ in range(labels_per_page))
 
+    # Load base frame
+    base_frame = image_to_base64(ASSETS_DIR / "base.png")
 
-def create_sticker_sheet_with_images(single_sticker_html: str) -> bytes:
-    """Create A4 PDF using image manipulation approach."""
-    from PIL import Image, ImageDraw
-    import pdfkit
-    from io import BytesIO
-    
-    # A4 dimensions at 300 DPI
-    A4_WIDTH_PX = 2480  # 210mm * 300 DPI / 25.4
-    A4_HEIGHT_PX = 3508  # 297mm * 300 DPI / 25.4
-    
-    # Label dimensions (scaled down to fit 4 on A4)
-    LABEL_WIDTH_PX = 600  # ~50mm
-    LABEL_HEIGHT_PX = 750  # ~63mm
-    
-    # Create A4 canvas
-    a4_image = Image.new('RGB', (A4_WIDTH_PX, A4_HEIGHT_PX), 'white')
-    
-    # Generate single label as image
-    # First create a temporary HTML file for the single label
-    temp_html = f"""
+    return f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <meta charset="utf-8">
-        <style>
-            @page {{ size: {LABEL_WIDTH_PX}px {LABEL_HEIGHT_PX}px; margin: 0; }}
-            body {{ margin: 0; padding: 0; }}
-        </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=800, initial-scale=1" />
+    <style>
+      @page {{
+        size: A4;
+        margin: 0;
+      }}
+
+      * {{ box-sizing:border-box; }}
+      html, body {{ margin: 0; padding: 0; background: #fff; }}
+
+      .sheet {{
+        width: 210mm;
+        height: 297mm;
+        padding: 5mm;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+        gap: 0;
+      }}
+
+      .label {{
+        position: relative;
+        width: 100%;
+        height: 100%;
+        color: #000;
+        font: 11px/1.45 "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+        padding: 12mm 10mm 12mm;
+        overflow: hidden;
+        background-image: url("data:image/png;base64,{base_frame}");
+        background-position: left top;
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }}
+
+      .label-inner{{
+        display:flex;
+        flex-direction:column;
+        position:relative;
+        z-index:1;
+        width: 100%;
+        height: 100%;
+        gap:14px;
+        justify-content:center;
+        padding-top: 5px;
+      }}
+
+      h1,h2,h3,p {{ margin:0; }}
+
+      .desc{{
+        text-align:center;
+        font-size:10px;
+        line-height:1.5;
+        color:#333;
+        white-space:pre-line;
+        margin-bottom:12px;
+      }}
+
+      .section-title{{
+        font-weight:800;
+        text-transform:uppercase;
+        margin-bottom:6px;
+        font-size:10px;
+      }}
+
+      .ingredients-nutrition-container{{
+        width:100%;
+        border-collapse:collapse;
+        margin:0;
+        padding:0;
+      }}
+
+      .ingredients{{
+        width:45%;
+        vertical-align:top;
+        padding-right:10px;
+      }}
+      .ingredients p{{ margin:0; white-space:pre-line; }}
+
+      .ingredients div{{
+        font-size:10px;
+        margin-bottom:1px;
+      }}
+
+      .facts{{
+        width:55%;
+        vertical-align:top;
+        padding-left:10px;
+        padding:4px 6px 6px;
+        background:transparent;
+      }}
+      .facts table{{
+        width:100%;
+        border-collapse:collapse;
+        table-layout:fixed;
+        font-size:6.5px;
+      }}
+      .facts th,
+      .facts td{{
+        border:1px solid #c9c9c9;
+        padding:2px 3px;
+        text-align:left;
+        vertical-align:middle;
+      }}
+      .facts thead th{{
+        background:#f2f2f2;
+        font-weight:700;
+        text-transform:uppercase;
+        font-size:7px;
+        letter-spacing:0.3px;
+      }}
+      .facts tbody td:nth-child(2){{
+        text-align:center;
+      }}
+      .facts tbody td:last-child{{
+        text-align:right;
+      }}
+
+      .grid{{
+        display:table;
+        width:100%;
+        font-size:10px;
+        margin-top: 8px;
+        margin-bottom: 8px;
+      }}
+      .grid-row{{
+        display:table-row;
+      }}
+      .grid-cell{{
+        display:table-cell;
+        width:50%;
+        padding:3px 10px;
+        vertical-align:top;
+      }}
+
+      .foot{{
+        padding-top:6px;
+        font-size:10.5px;
+        margin-top:auto;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }}
+
+      .foot-content{{
+        display:table;
+        width:100%;
+      }}
+
+      .foot-left{{
+        display:table-cell;
+        width:50%;
+        vertical-align:top;
+        padding:3px 12px;
+      }}
+
+      .foot-right{{
+        display:table-cell;
+        width:50%;
+        vertical-align:top;
+        padding:3px 12px;
+      }}
+      .fssai-block{{ display:flex; align-items:center; gap:6px; margin-bottom:2px; }}
+      .fssai-logo{{ height:12px; width:auto; display:inline-block; vertical-align:middle; }}
+    </style>
     </head>
     <body>
-        {single_sticker_html}
+      <div class="sheet">
+        {labels}
+      </div>
     </body>
     </html>
     """
-    
-    # Generate PDF for single label
-    single_label_pdf = pdfkit.from_string(temp_html, False, options={
-        "page-size": "A4",
-        "margin-top": "0mm",
-        "margin-bottom": "0mm",
-        "margin-left": "0mm",
-        "margin-right": "0mm",
-        "encoding": "UTF-8",
-        "enable-local-file-access": "",
-        "disable-smart-shrinking": "",
-        "print-media-type": "",
-        "dpi": "300",
-    })
-    
-    # For now, let's use a simpler approach - create the A4 layout directly
-    return create_simple_a4_layout(single_sticker_html)
-
-
-def create_simple_a4_layout(single_sticker_html: str) -> str:
-    """Create a simple A4 layout that works with the original single sticker logic."""
-    # Extract just the article content from the HTML
-    import re
-    article_match = re.search(r"<article[^>]*>(?P<article>.*)</article>", single_sticker_html, flags=re.IGNORECASE | re.DOTALL)
-    if article_match:
-        sticker_content = article_match.group("article").strip()
-    else:
-        # Fallback: get body content
-        body_match = re.search(r"<body[^>]*>(?P<body>.*)</body>", single_sticker_html, flags=re.IGNORECASE | re.DOTALL)
-        if body_match:
-            sticker_content = body_match.group("body").strip()
-        else:
-            sticker_content = single_sticker_html
-    
-    # Extract styles from the original HTML
-    style_match = re.search(r"<style[^>]*>(?P<style>.*)</style>", single_sticker_html, flags=re.IGNORECASE | re.DOTALL)
-    sticker_styles = style_match.group("style") if style_match else ""
-    
-    # Simply repeat the full sticker HTML 4 times with proper positioning
-    # The content should be actual full-size stickers (120mm x 150mm) scaled to fit
-    return f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        {sticker_styles}
-        @page {{ size: A4; margin: 0; }}
-        * {{ box-sizing: border-box; }}
-        body {{ 
-            margin: 0; 
-            padding: 0; 
-            background: white;
-        }}
-        .a4-sheet {{
-            width: 210mm;
-            height: 297mm;
-            position: relative;
-            background: white;
-            margin: 0;
-            padding: 0;
-        }}
-        .sticker-wrapper {{
-            position: absolute;
-            width: 100mm;
-            height: 125mm;
-            overflow: hidden;
-        }}
-        .sticker-wrapper .content {{
-            width: 120mm;
-            height: 150mm;
-            transform: scale(0.75);
-            transform-origin: top left;
-        }}
-        .pos1 {{ left: 5mm; top: 5mm; }}
-        .pos2 {{ left: 105mm; top: 5mm; }}
-        .pos3 {{ left: 5mm; top: 135mm; }}
-        .pos4 {{ left: 105mm; top: 135mm; }}
-    </style>
-</head>
-<body>
-    <div class="a4-sheet">
-        <div class="sticker-wrapper pos1">
-            <div class="content">
-                {sticker_content}
-            </div>
-        </div>
-        <div class="sticker-wrapper pos2">
-            <div class="content">
-                {sticker_content}
-            </div>
-        </div>
-        <div class="sticker-wrapper pos3">
-            <div class="content">
-                {sticker_content}
-            </div>
-        </div>
-        <div class="sticker-wrapper pos4">
-            <div class="content">
-                {sticker_content}
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-
-def create_sticker_sheet_html(single_sticker_html: str) -> str:
-    """Create an A4 sheet with 4 labels - main entry point."""
-    return create_simple_a4_layout(single_sticker_html)
-
-
-def generate_pdf_with_pillow(single_sticker_html: str) -> bytes:
-    """Generate a 4-sticker A4 PDF using Pillow for precise layout control."""
-    
-    # Step 1: Generate single sticker as image using wkhtmltopdf
-    def html_to_image(html_content: str, width_mm: int = 120, height_mm: int = 150, dpi: int = 300) -> Image.Image:
-        """Convert HTML to image using wkhtmltoimage."""
-        try:
-            # Generate PNG image using wkhtmltoimage
-            import subprocess
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as html_file:
-                html_file.write(html_content)
-                html_file.flush()
-                
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as img_file:
-                    cmd = [
-                        'wkhtmltoimage',
-                        '--crop-w', str(int(width_mm * dpi / 25.4)),
-                        '--crop-h', str(int(height_mm * dpi / 25.4)),
-                        '--quality', '95',
-                        '--format', 'png',
-                        '--disable-smart-width',
-                        html_file.name,
-                        img_file.name
-                    ]
-                    
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        raise Exception(f"wkhtmltoimage failed: {result.stderr}")
-                    
-                    # Load the generated image
-                    image = Image.open(img_file.name)
-                    
-                    # Clean up temp files
-                    os.unlink(html_file.name)
-                    os.unlink(img_file.name)
-                    
-                    return image
-                    
-        except Exception as e:
-            print(f"Error generating image: {e}")
-            raise
-    
-    # Step 2: Create A4 canvas and arrange 4 stickers
-    def create_a4_layout(sticker_image: Image.Image) -> Image.Image:
-        """Create A4 layout with 4 sticker images."""
-        # A4 dimensions at 300 DPI
-        a4_width_px = int(210 * 300 / 25.4)  # ~2480px
-        a4_height_px = int(297 * 300 / 25.4)  # ~3508px
-        
-        # Create white A4 canvas
-        canvas = Image.new('RGB', (a4_width_px, a4_height_px), 'white')
-        
-        # Calculate sticker dimensions and positions
-        sticker_width_mm = 100
-        sticker_height_mm = 125
-        sticker_width_px = int(sticker_width_mm * 300 / 25.4)
-        sticker_height_px = int(sticker_height_mm * 300 / 25.4)
-        
-        # Resize sticker to fit in frame
-        sticker_resized = sticker_image.resize((sticker_width_px, sticker_height_px), Image.Resampling.LANCZOS)
-        
-        # Calculate positions (5mm margins, 5mm gaps)
-        margin_px = int(5 * 300 / 25.4)
-        gap_px = int(5 * 300 / 25.4)
-        
-        positions = [
-            (margin_px, margin_px),  # Top-left
-            (margin_px + sticker_width_px + gap_px, margin_px),  # Top-right
-            (margin_px, margin_px + sticker_height_px + gap_px),  # Bottom-left
-            (margin_px + sticker_width_px + gap_px, margin_px + sticker_height_px + gap_px),  # Bottom-right
-        ]
-        
-        # Paste 4 stickers
-        for pos in positions:
-            canvas.paste(sticker_resized, pos)
-        
-        return canvas
-    
-    # Step 3: Convert final image to PDF
-    def image_to_pdf(image: Image.Image) -> bytes:
-        """Convert PIL Image to PDF bytes."""
-        pdf_buffer = BytesIO()
-        # Convert to RGB if needed (for PDF compatibility)
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        image.save(pdf_buffer, format='PDF', quality=95)
-        return pdf_buffer.getvalue()
-    
-    # Execute the pipeline
-    try:
-        # Generate single sticker image
-        sticker_image = html_to_image(single_sticker_html)
-        
-        # Create A4 layout with 4 stickers
-        a4_layout = create_a4_layout(sticker_image)
-        
-        # Convert to PDF
-        pdf_bytes = image_to_pdf(a4_layout)
-        
-        return pdf_bytes
-        
-    except Exception as e:
-        print(f"Error in Pillow PDF generation: {e}")
-        # Fallback to original method
-        return pdfkit.from_string(single_sticker_html, False, options={
-            'page-size': 'A4',
-            'margin-top': '0',
-            'margin-right': '0',
-            'margin-bottom': '0',
-            'margin-left': '0',
-            'disable-smart-shrinking': '',
-            'print-media-type': '',
-            'dpi': 300,
-        })
-
-
-def generate_pdf(html: str) -> bytes:
-    # Use the new approach: 4 separate single PDFs combined into one A4
-    return generate_4_combined_pdfs(html)
-
-
-def generate_single_sticker_pdf(html: str) -> bytes:
-    """Generate a single perfect sticker PDF using the original method."""
-    config = None
-    wkhtml_binary = os.environ.get("WKHTMLTOPDF_BINARY")
-    if wkhtml_binary:
-        config = pdfkit.configuration(wkhtmltopdf=wkhtml_binary)
-
-    # Original single sticker options that gave perfect fitting
-    options = {
-        "page-size": "A4",
-        "page-width": "120mm",
-        "page-height": "150mm", 
-        "margin-top": "0mm",
-        "margin-bottom": "0mm", 
-        "margin-left": "0mm",
-        "margin-right": "0mm",
-        "encoding": "UTF-8",
-        "enable-local-file-access": "",
-        "disable-smart-shrinking": "",
-        "print-media-type": "",
-        "dpi": "300",
-    }
-
-    return pdfkit.from_string(html, False, options=options, configuration=config)
-
-
-def generate_single_sticker_png(html: str) -> bytes:
-    """Generate a single perfect sticker PNG using wkhtmltoimage."""
-    import subprocess
-    import tempfile
-    
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as html_file:
-        html_file.write(html)
-        html_file.flush()
-        
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as img_file:
-            # Convert 120mm x 150mm to pixels at 300 DPI
-            width_px = int(120 * 300 / 25.4)  # ~1417px
-            height_px = int(150 * 300 / 25.4)  # ~1772px
-            
-            # Use wkhtmltoimage to create perfect single sticker image
-            cmd = [
-                'wkhtmltoimage',
-                '--width', str(width_px),
-                '--height', str(height_px), 
-                '--quality', '95',
-                '--format', 'png',
-                '--disable-smart-width',
-                '--enable-local-file-access',
-                '--load-error-handling', 'ignore',
-                html_file.name,
-                img_file.name
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"wkhtmltoimage failed: {result.stderr}")
-            
-            # Read the generated image
-            with open(img_file.name, 'rb') as f:
-                png_bytes = f.read()
-            
-            # Clean up temp files
-            os.unlink(html_file.name)
-            os.unlink(img_file.name)
-            
-            return png_bytes
-
-
-def generate_single_sticker_jpg(html: str) -> bytes:
-    """Generate a single perfect sticker JPG using wkhtmltoimage."""
-    import subprocess
-    import tempfile
-    
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as html_file:
-        html_file.write(html)
-        html_file.flush()
-        
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as img_file:
-            # Convert 120mm x 150mm to pixels at 300 DPI
-            width_px = int(120 * 300 / 25.4)  # ~1417px
-            height_px = int(150 * 300 / 25.4)  # ~1772px
-            
-            # Use wkhtmltoimage to create perfect single sticker image
-            cmd = [
-                'wkhtmltoimage',
-                '--width', str(width_px),
-                '--height', str(height_px), 
-                '--quality', '95',
-                '--format', 'jpg',
-                '--disable-smart-width',
-                '--enable-local-file-access',
-                '--load-error-handling', 'ignore',
-                html_file.name,
-                img_file.name
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"wkhtmltoimage failed: {result.stderr}")
-            
-            # Read the generated image
-            with open(img_file.name, 'rb') as f:
-                jpg_bytes = f.read()
-            
-            # Clean up temp files
-            os.unlink(html_file.name)
-            os.unlink(img_file.name)
-            
-            return jpg_bytes
-
-
-def _merge_defaults(overrides: Dict[str, str]) -> Dict[str, str]:
-    merged = DEFAULT_DATA.copy()
-    merged.update({k: v for k, v in overrides.items() if v})
-    return merged
-
-
-def _process_custom_nutrition(form_values: Dict[str, str]) -> str:
-    """Process custom nutrition fields from form data."""
-    custom_fields = []
-    for key, value in form_values.items():
-        if key.startswith("custom_nutrition[") and key.endswith("][name]"):
-            # Extract the index
-            index = key.split("[")[1].split("]")[0]
-            name_key = f"custom_nutrition[{index}][name]"
-            amount_key = f"custom_nutrition[{index}][amount]"
-            
-            name = form_values.get(name_key, "").strip()
-            amount = form_values.get(amount_key, "").strip()
-            
-            if name and amount:
-                custom_fields.append(f"{name}: {amount}")
-    
-    return "<br>".join(custom_fields) if custom_fields else ""
-
-
-def _build_font_face() -> str:
-    if not FONT_PATH.exists():
-        return ""
-    encoded = b64encode(FONT_PATH.read_bytes()).decode("ascii")
-    return (
-        "@font-face{font-family:'Inter Custom';font-style:normal;font-weight:400;"
-        "src:url(data:font/truetype;base64," + encoded + ") format('truetype');}"
-    )
 
 
 @app.route("/", methods=["GET", "POST"])
 def label_generator():
-    error: str | None = None
     presets = load_presets()
     selected_preset = request.args.get("preset", "")
     if request.method == "POST":
@@ -671,14 +452,12 @@ def label_generator():
     else:
         form_values = _merge_defaults({})
 
-    preview_html = render_label_html(build_context(form_values, for_pdf=False))
     return render_template(
         "label_generator.html",
         field_groups=FIELD_GROUPS,
         quick_fields=QUICK_FIELDS,
         values=form_values,
-        error=error,
-        preview_html=preview_html,
+        error=None,
         presets=presets,
         selected_preset=selected_preset,
     )
@@ -686,25 +465,23 @@ def label_generator():
 
 @app.route("/generate_single_pdf", methods=["POST"])
 def generate_single_pdf():
-    """Generate a single perfect sticker PDF."""
+    """Generate an A4 PDF with 4 labels."""
     submitted = {name: request.form.get(name, "") for name in ALL_FIELD_NAMES}
     form_values = _merge_defaults(submitted)
-    context = build_context(form_values, for_pdf=True)
     
     try:
-        html = render_label_html(context)
-        pdf_bytes = generate_single_sticker_pdf(html)
+        html = generate_pdf_html(form_values, labels_per_page=4)
+        pdf_bytes = HTML(string=html).write_pdf()
         pdf_io = BytesIO(pdf_bytes)
         return send_file(
             pdf_io,
             mimetype="application/pdf",
             as_attachment=True,
-            download_name="label.pdf",
+            download_name="sadhu_farm_labels.pdf",
         )
     except Exception as exc:
         error = f"Unable to generate PDF: {exc}"
         presets = load_presets()
-        preview_html = render_label_html(build_context(form_values, for_pdf=False))
         return render_template(
             "label_generator.html",
             field_groups=FIELD_GROUPS,
@@ -712,113 +489,8 @@ def generate_single_pdf():
             values=form_values,
             presets=presets,
             selected_preset="",
-            preview_html=preview_html,
             error=error,
         )
-
-
-@app.route("/generate_single_png", methods=["POST"])
-def generate_single_png():
-    """Generate a single perfect sticker PNG."""
-    submitted = {name: request.form.get(name, "") for name in ALL_FIELD_NAMES}
-    form_values = _merge_defaults(submitted)
-    context = build_context(form_values, for_pdf=False)  # Use web URLs instead of file paths
-    
-    try:
-        html = render_label_html(context)
-        png_bytes = generate_single_sticker_png(html)
-        png_io = BytesIO(png_bytes)
-        return send_file(
-            png_io,
-            mimetype="image/png",
-            as_attachment=True,
-            download_name="label.png",
-        )
-    except Exception as exc:
-        error = f"Unable to generate PNG: {exc}"
-        presets = load_presets()
-        preview_html = render_label_html(build_context(form_values, for_pdf=False))
-        return render_template(
-            "label_generator.html",
-            field_groups=FIELD_GROUPS,
-            quick_fields=QUICK_FIELDS,
-            values=form_values,
-            presets=presets,
-            selected_preset="",
-            preview_html=preview_html,
-            error=error,
-        )
-
-
-@app.route("/generate_single_jpg", methods=["POST"])
-def generate_single_jpg():
-    """Generate a single perfect sticker JPG."""
-    submitted = {name: request.form.get(name, "") for name in ALL_FIELD_NAMES}
-    form_values = _merge_defaults(submitted)
-    context = build_context(form_values, for_pdf=False)  # Use web URLs instead of file paths
-    
-    try:
-        html = render_label_html(context)
-        jpg_bytes = generate_single_sticker_jpg(html)
-        jpg_io = BytesIO(jpg_bytes)
-        return send_file(
-            jpg_io,
-            mimetype="image/jpeg",
-            as_attachment=True,
-            download_name="label.jpg",
-        )
-    except Exception as exc:
-        error = f"Unable to generate JPG: {exc}"
-        presets = load_presets()
-        preview_html = render_label_html(build_context(form_values, for_pdf=False))
-        return render_template(
-            "label_generator.html",
-            field_groups=FIELD_GROUPS,
-            quick_fields=QUICK_FIELDS,
-            values=form_values,
-            presets=presets,
-            selected_preset="",
-            preview_html=preview_html,
-            error=error,
-        )
-
-
-@app.route("/upload_presets", methods=["POST"])
-def upload_presets():
-    file = request.files.get("presets_file")
-    if file is None or not file.filename:
-        return jsonify(success=False, error="No file provided."), 400
-
-    try:
-        content = file.read().decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return jsonify(success=False, error="Could not decode file. Use UTF-8 encoding."), 400
-
-    reader = csv.DictReader(StringIO(content))
-    if reader.fieldnames is None:
-        return jsonify(success=False, error="CSV header row is required."), 400
-    normalized_headers = [name.strip() for name in reader.fieldnames if name]
-    reader.fieldnames = normalized_headers
-    if "product_name" not in normalized_headers:
-        return jsonify(success=False, error="CSV must include a 'product_name' column."), 400
-
-    presets = load_presets()
-    added = 0
-
-    try:
-        for row in reader:
-            product_name = (row.get("product_name") or "").strip()
-            if not product_name:
-                continue
-            normalized = _normalize_preset_row(row)
-            normalized["product_name"] = product_name
-            presets[product_name] = normalized
-            added += 1
-    except csv.Error as exc:
-        return jsonify(success=False, error=f"Invalid CSV format: {exc}"), 400
-
-    save_presets(presets)
-    return jsonify(success=True, added=added, total=len(presets))
 
 
 @app.route("/save_preset", methods=["POST"])
@@ -841,10 +513,8 @@ def save_preset():
     return jsonify(success=True, product_name=product_name, total=len(presets))
 
 
-def iter_field_names() -> Iterable[str]:
-    return ALL_FIELD_NAMES
-
+# For Vercel deployment
+handler = app
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=5001)
-
+    app.run(debug=True, host="0.0.0.0", port=5001)
