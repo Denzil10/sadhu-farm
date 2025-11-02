@@ -175,25 +175,51 @@ def asset_uri(filename: str, use_relative: bool = True) -> str:
 
 
 def asset_to_base64(filename: str) -> str:
-    """Return base64 encoded asset as fallback when file paths don't work."""
+    """Return base64 encoded asset. Tries multiple methods to find the file.
+    
+    Returns empty string if file cannot be found or read.
+    """
+    # Method 1: Try local ASSETS_DIR path
     local_path = ASSETS_DIR / filename
-    if local_path.exists():
+    if local_path.exists() and local_path.is_file():
         try:
             data = local_path.read_bytes()
-            return base64.b64encode(data).decode("ascii")
-        except Exception as e:
-            app.logger.warning("Failed to read asset %s: %s", filename, e)
-            return ""
+            if data:
+                encoded = base64.b64encode(data).decode("ascii")
+                app.logger.debug("Successfully loaded %s from local path", filename)
+                return encoded
+        except (OSError, IOError, PermissionError) as e:
+            app.logger.warning("Failed to read asset %s from local path: %s", filename, e)
     
-    # Try resources fallback
+    # Method 2: Try importlib.resources (for packaged deployments)
     try:
         resource = resources.files("assets").joinpath(filename)
-        with resources.as_file(resource) as resource_path:
-            data = Path(resource_path).read_bytes()
-            return base64.b64encode(data).decode("ascii")
-    except Exception as e:
-        app.logger.warning("Failed to read asset resource %s: %s", filename, e)
-        return ""
+        if resource.is_file():
+            with resources.as_file(resource) as resource_path:
+                data = Path(resource_path).read_bytes()
+                if data:
+                    encoded = base64.b64encode(data).decode("ascii")
+                    app.logger.debug("Successfully loaded %s from resources", filename)
+                    return encoded
+    except (FileNotFoundError, ModuleNotFoundError, AttributeError, ValueError, OSError) as e:
+        app.logger.debug("Asset %s not found in resources: %s", filename, e)
+    
+    # Method 3: Try relative to BASE_DIR
+    try:
+        alt_path = BASE_DIR / filename
+        if alt_path.exists() and alt_path.is_file():
+            data = alt_path.read_bytes()
+            if data:
+                encoded = base64.b64encode(data).decode("ascii")
+                app.logger.debug("Successfully loaded %s from BASE_DIR", filename)
+                return encoded
+    except (OSError, IOError) as e:
+        app.logger.debug("Asset %s not found in BASE_DIR: %s", filename, e)
+    
+    # All methods failed
+    app.logger.error("Could not find or read asset: %s (tried: %s, resources, %s)", 
+                     filename, local_path, BASE_DIR / filename)
+    return ""
 
 
 def load_presets() -> Dict[str, Dict[str, str]]:
@@ -231,14 +257,22 @@ def generate_label_html(data: Dict[str, str]) -> str:
     base_frame_b64 = asset_to_base64("base.png")
     fssai_logo_b64 = asset_to_base64("fssai.png")
     
+    # Build URIs - use base64 data URI if available, otherwise empty string
     base_frame_uri = f"data:image/png;base64,{base_frame_b64}" if base_frame_b64 else ""
     fssai_logo_uri = f"data:image/png;base64,{fssai_logo_b64}" if fssai_logo_b64 else ""
     
+    # Log warnings if images are missing (but continue rendering)
     if not base_frame_b64:
-        app.logger.error("Base frame image not found - label will render without background")
+        app.logger.warning("Base frame image (base.png) not found - label will render without background frame")
+    else:
+        app.logger.debug("Base frame image loaded successfully")
+        
     if not fssai_logo_b64:
-        app.logger.warning("FSSAI logo not found - label will render without logo")
+        app.logger.warning("FSSAI logo (fssai.png) not found - label will render without logo")
+    else:
+        app.logger.debug("FSSAI logo loaded successfully")
     
+    # Only include image tag if logo URI is available
     fssai_img_tag = (
         f'<img class="fssai-logo" src="{fssai_logo_uri}" alt="FSSAI" />' if fssai_logo_uri else ""
     )
@@ -617,7 +651,9 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
     base_frame_uri = f"data:image/png;base64,{base_frame_b64}" if base_frame_b64 else ""
     
     if not base_frame_b64:
-        app.logger.error("Base frame image not found - labels will render without background")
+        app.logger.warning("Base frame image (base.png) not found - labels will render without background frame")
+    else:
+        app.logger.debug("Base frame image loaded successfully for PDF generation")
 
     return f"""
     <!DOCTYPE html>
@@ -652,7 +688,7 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
         font: 11px/1.45 "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
         padding: 10mm 8mm 10mm;
         overflow: hidden;
-        background-image: url("{base_frame_uri}");
+        {('background-image: url("' + base_frame_uri + '");') if base_frame_uri else ''}
         background-position: left top;
         background-size: 100% 100%;
         background-repeat: no-repeat;
