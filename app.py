@@ -45,6 +45,7 @@ DEFAULT_DATA: Dict[str, str] = {
     "sodium_amt": "46",
     "sodium_dv": "2%",
     "price": "520",
+    "weight": "250",
     "batch": "BC-2409-07",
     "mfg": "2024-09-15",
     "expiry": "2025-03-15",
@@ -64,7 +65,8 @@ FIELD_GROUPS = (
         "Preset",
         (
             {"name": "product_name", "label": "Product Name", "type": "text"},
-            {"name": "price", "label": "Unit Price (₹/kg)", "type": "text"},
+            {"name": "price", "label": "Unit Price", "type": "text"},
+            {"name": "weight", "label": "Weight (g)", "type": "text"},
         ),
     ),
     (
@@ -131,8 +133,8 @@ def asset_uri(filename: str, use_relative: bool = True) -> str:
     
     Args:
         filename: Name of the asset file
-        use_relative: If True, returns relative path (works with base_url in server environments)
-                     If False, returns file:// URI (works locally but not on servers)
+        use_relative: If True, returns relative path (for local dev with base_url)
+                     If False, returns absolute path (most reliable for server environments)
     """
     local_path = ASSETS_DIR / filename
     if local_path.exists():
@@ -142,10 +144,10 @@ def asset_uri(filename: str, use_relative: bool = True) -> str:
             app.logger.debug(f"Asset URI (relative): {rel_path}, base_dir: {BASE_DIR.resolve()}")
             return rel_path
         else:
-            # Use file:// URI for local development
-            file_uri = local_path.resolve().as_uri()
-            app.logger.debug(f"Asset URI (file://): {file_uri}")
-            return file_uri
+            # Use absolute path string (works best on servers)
+            abs_path = str(local_path.resolve())
+            app.logger.debug(f"Asset URI (absolute): {abs_path}")
+            return abs_path
     
     # Try resources fallback
     try:
@@ -159,15 +161,38 @@ def asset_uri(filename: str, use_relative: bool = True) -> str:
                     return rel_path
                 except ValueError:
                     # If not relative, use absolute path
-                    abs_path = str(Path(resource_path))
+                    abs_path = str(Path(resource_path).resolve())
                     app.logger.debug(f"Asset URI (resource absolute): {abs_path}")
                     return abs_path
             else:
-                file_uri = Path(resource_path).resolve().as_uri()
-                app.logger.debug(f"Asset URI (resource file://): {file_uri}")
-                return file_uri
+                # Use absolute path string for server environments
+                abs_path = str(Path(resource_path).resolve())
+                app.logger.debug(f"Asset URI (resource absolute): {abs_path}")
+                return abs_path
     except (FileNotFoundError, ModuleNotFoundError, AttributeError) as e:
         app.logger.warning("Asset missing: %s (%s)", filename, e)
+        return ""
+
+
+def asset_to_base64(filename: str) -> str:
+    """Return base64 encoded asset as fallback when file paths don't work."""
+    local_path = ASSETS_DIR / filename
+    if local_path.exists():
+        try:
+            data = local_path.read_bytes()
+            return base64.b64encode(data).decode("ascii")
+        except Exception as e:
+            app.logger.warning("Failed to read asset %s: %s", filename, e)
+            return ""
+    
+    # Try resources fallback
+    try:
+        resource = resources.files("assets").joinpath(filename)
+        with resources.as_file(resource) as resource_path:
+            data = Path(resource_path).read_bytes()
+            return base64.b64encode(data).decode("ascii")
+    except Exception as e:
+        app.logger.warning("Failed to read asset resource %s: %s", filename, e)
         return ""
 
 
@@ -201,9 +226,19 @@ def _normalize_preset_row(row: Dict[str, str]) -> Dict[str, str]:
 
 def generate_label_html(data: Dict[str, str]) -> str:
     """Generate HTML for a single label with the given data."""
-    # Load base frame and FSSAI logo
-    base_frame_uri = asset_uri("base.png")
-    fssai_logo_uri = asset_uri("fssai.png")
+    # Use base64 encoding - most reliable method that works everywhere
+    # File paths often fail on server environments like Render.com
+    base_frame_b64 = asset_to_base64("base.png")
+    fssai_logo_b64 = asset_to_base64("fssai.png")
+    
+    base_frame_uri = f"data:image/png;base64,{base_frame_b64}" if base_frame_b64 else ""
+    fssai_logo_uri = f"data:image/png;base64,{fssai_logo_b64}" if fssai_logo_b64 else ""
+    
+    if not base_frame_b64:
+        app.logger.error("Base frame image not found - label will render without background")
+    if not fssai_logo_b64:
+        app.logger.warning("FSSAI logo not found - label will render without logo")
+    
     fssai_img_tag = (
         f'<img class="fssai-logo" src="{fssai_logo_uri}" alt="FSSAI" />' if fssai_logo_uri else ""
     )
@@ -270,6 +305,10 @@ def generate_label_html(data: Dict[str, str]) -> str:
               </div>
               <div class="grid-row">
                 <div class="grid-cell"><span><strong>Expiry:</strong></span> {data.get("expiry", "")}</div>
+                <div class="grid-cell"><span><strong>Weight:</strong></span> {data.get("weight", "")} g</div>
+              </div>
+              <div class="grid-row">
+                <div class="grid-cell"></div>
                 <div class="grid-cell"><span><strong>Batch Code:</strong></span> {data.get("batch", "")}</div>
               </div>
             </section>
@@ -573,8 +612,12 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
     label_markup = generate_label_html(data)
     labels = "\n".join(label_markup for _ in range(labels_per_page))
 
-    # Load base frame
-    base_frame_uri = asset_uri("base.png")
+    # Load base frame - use base64 encoding (most reliable on all platforms)
+    base_frame_b64 = asset_to_base64("base.png")
+    base_frame_uri = f"data:image/png;base64,{base_frame_b64}" if base_frame_b64 else ""
+    
+    if not base_frame_b64:
+        app.logger.error("Base frame image not found - labels will render without background")
 
     return f"""
     <!DOCTYPE html>
@@ -594,7 +637,7 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
       .sheet {{
         width: 210mm;
         height: 297mm;
-        padding: 5mm;
+        padding: 0;
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         grid-template-rows: repeat(2, 1fr);
@@ -607,7 +650,7 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
         height: 100%;
         color: #000;
         font: 11px/1.45 "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
-        padding: 12mm 10mm 12mm;
+        padding: 10mm 8mm 10mm;
         overflow: hidden;
         background-image: url("{base_frame_uri}");
         background-position: left top;
@@ -622,9 +665,9 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
         z-index:1;
         width: 100%;
         height: 100%;
-        gap:14px;
+        gap:10px;
         justify-content:center;
-        padding-top: 5px;
+        padding-top: 2px;
       }}
 
       h1,h2,h3,p {{ margin:0; }}
@@ -635,7 +678,7 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
         line-height:1.5;
         color:#333;
         white-space:pre-line;
-        margin-bottom:12px;
+        margin-bottom:8px;
       }}
 
       .section-title{{
@@ -702,8 +745,8 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
         display:table;
         width:100%;
         font-size:10px;
-        margin-top: 8px;
-        margin-bottom: 8px;
+        margin-top: 4px;
+        margin-bottom: 4px;
       }}
       .grid-row{{
         display:table-row;
