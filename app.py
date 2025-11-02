@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import base64
 import json
-import os
+from importlib import resources
 from io import BytesIO
 from pathlib import Path
 from typing import Dict
@@ -126,12 +126,49 @@ ALL_FIELD_NAMES = (
 app = Flask(__name__)
 
 
-def image_to_base64(image_path: Path) -> str:
-    """Return the image at image_path encoded as base64 for data URIs."""
-    if not image_path.exists():
+def asset_uri(filename: str, use_relative: bool = True) -> str:
+    """Return a URI for an asset, usable by WeasyPrint.
+    
+    Args:
+        filename: Name of the asset file
+        use_relative: If True, returns relative path (works with base_url in server environments)
+                     If False, returns file:// URI (works locally but not on servers)
+    """
+    local_path = ASSETS_DIR / filename
+    if local_path.exists():
+        if use_relative:
+            # Use relative path from BASE_DIR - WeasyPrint will resolve via base_url
+            rel_path = str(local_path.relative_to(BASE_DIR))
+            app.logger.debug(f"Asset URI (relative): {rel_path}, base_dir: {BASE_DIR.resolve()}")
+            return rel_path
+        else:
+            # Use file:// URI for local development
+            file_uri = local_path.resolve().as_uri()
+            app.logger.debug(f"Asset URI (file://): {file_uri}")
+            return file_uri
+    
+    # Try resources fallback
+    try:
+        resource = resources.files("assets").joinpath(filename)
+        with resources.as_file(resource) as resource_path:
+            if use_relative:
+                # Try to get relative path if possible
+                try:
+                    rel_path = str(Path(resource_path).relative_to(BASE_DIR))
+                    app.logger.debug(f"Asset URI (resource relative): {rel_path}")
+                    return rel_path
+                except ValueError:
+                    # If not relative, use absolute path
+                    abs_path = str(Path(resource_path))
+                    app.logger.debug(f"Asset URI (resource absolute): {abs_path}")
+                    return abs_path
+            else:
+                file_uri = Path(resource_path).resolve().as_uri()
+                app.logger.debug(f"Asset URI (resource file://): {file_uri}")
+                return file_uri
+    except (FileNotFoundError, ModuleNotFoundError, AttributeError) as e:
+        app.logger.warning("Asset missing: %s (%s)", filename, e)
         return ""
-    data = image_path.read_bytes()
-    return base64.b64encode(data).decode("ascii")
 
 
 def load_presets() -> Dict[str, Dict[str, str]]:
@@ -165,11 +202,10 @@ def _normalize_preset_row(row: Dict[str, str]) -> Dict[str, str]:
 def generate_label_html(data: Dict[str, str]) -> str:
     """Generate HTML for a single label with the given data."""
     # Load base frame and FSSAI logo
-    base_frame = image_to_base64(ASSETS_DIR / "base.png")
-    fssai_logo_b64 = image_to_base64(ASSETS_DIR / "fssai.png")
+    base_frame_uri = asset_uri("base.png")
+    fssai_logo_uri = asset_uri("fssai.png")
     fssai_img_tag = (
-        f'<img class="fssai-logo" src="data:image/png;base64,{fssai_logo_b64}" alt="FSSAI" />'
-        if fssai_logo_b64 else ""
+        f'<img class="fssai-logo" src="{fssai_logo_uri}" alt="FSSAI" />' if fssai_logo_uri else ""
     )
 
     # Format nutrition table rows
@@ -254,13 +290,291 @@ def generate_label_html(data: Dict[str, str]) -> str:
     """
 
 
+def generate_test_png_html(data: Dict[str, str]) -> str:
+    """Generate HTML for testing multiple image embedding methods."""
+    # Get URIs for file-based methods - use relative paths for server compatibility
+    base_frame_uri = asset_uri("base.png", use_relative=True)
+    fssai_logo_uri = asset_uri("fssai.png", use_relative=True)
+    
+    # Also get file:// URI versions for testing
+    base_frame_file_uri = asset_uri("base.png", use_relative=False)
+    fssai_logo_file_uri = asset_uri("fssai.png", use_relative=False)
+    
+    # Get base64 for methods that need base64 encoding
+    base_frame_path = ASSETS_DIR / "base.png"
+    fssai_logo_path = ASSETS_DIR / "fssai.png"
+    base_frame_b64 = ""
+    fssai_logo_b64 = ""
+    
+    if base_frame_path.exists():
+        base_frame_b64 = base64.b64encode(base_frame_path.read_bytes()).decode("ascii")
+    if fssai_logo_path.exists():
+        fssai_logo_b64 = base64.b64encode(fssai_logo_path.read_bytes()).decode("ascii")
+    
+    # Get absolute paths for file:// URLs
+    base_frame_abs = str(base_frame_path.resolve()) if base_frame_path.exists() else ""
+    fssai_logo_abs = str(fssai_logo_path.resolve()) if fssai_logo_path.exists() else ""
+    base_frame_relative = str(base_frame_path.relative_to(BASE_DIR)) if base_frame_path.exists() else ""
+    fssai_logo_relative = str(fssai_logo_path.relative_to(BASE_DIR)) if fssai_logo_path.exists() else ""
+    
+    # Create test label content (simplified)
+    label_content = f"""
+            <section class="desc">
+              {data.get("desc", "")[:50]}...
+            </section>
+            <div class="test-info">
+              <div><strong>Product:</strong> {data.get("product_name", "")}</div>
+              <div><strong>Batch:</strong> {data.get("batch", "")}</div>
+            </div>
+            <footer class="foot">
+              <div class="fssai-block">
+                <img class="fssai-logo" src="{fssai_logo_uri}" alt="FSSAI" />
+                <strong>LIC:</strong> {data.get("fssai", "")}
+              </div>
+            </footer>
+    """
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {{
+        size: A4 landscape;
+        margin: 5mm;
+      }}
+      
+      body {{
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+      }}
+      
+      .test-container {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 10px;
+      }}
+      
+      .test-label {{
+        position: relative;
+        width: 100%;
+        min-height: 150px;
+        padding: 10px;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        background: #fff;
+        font-size: 9px;
+        color: #000;
+        overflow: hidden;
+        box-sizing: border-box;
+      }}
+      
+      .test-label.full-width {{
+        grid-column: 1 / -1;
+      }}
+      
+      .test-label h3 {{
+        margin: 0 0 8px;
+        font-size: 12px;
+        color: #333;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 5px;
+        line-height: 1.3;
+      }}
+      
+      .label-inner {{
+        position: relative;
+        z-index: 1;
+      }}
+      
+      /* Method 1: Base64 data URI in CSS background */
+      .method1 {{
+        background-image: url("data:image/png;base64,{base_frame_b64}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        background-position: center;
+      }}
+      
+      /* Method 2: Base64 data URI in img tag */
+      .method2 {{
+        background-color: #f5f5f5;
+      }}
+      .method2 .frame-img {{
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 0;
+        opacity: 0.3;
+      }}
+      
+      /* Method 3: File URL with absolute path */
+      .method3 {{
+        background-image: url("file://{base_frame_abs}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }}
+      
+      /* Method 4: Relative path (should work with base_url) */
+      .method4 {{
+        background-image: url("{base_frame_relative}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }}
+      
+      /* Method 7: asset_uri() relative path (Current Implementation) */
+      .method7 {{
+        background-image: url("{base_frame_uri}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }}
+      
+      /* Method 8: asset_uri() file:// URI (for comparison) */
+      .method8 {{
+        background-image: url("{base_frame_file_uri}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }}
+      
+      /* Method 5: Base64 in img tag positioned absolutely */
+      .method5 {{
+        position: relative;
+      }}
+      .method5 .frame-img {{
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+      }}
+      
+      /* Method 6: Multiple base64 images stacked */
+      .method6 {{
+        background-image: 
+          url("data:image/png;base64,{base_frame_b64}"),
+          url("data:image/png;base64,{fssai_logo_b64}");
+        background-size: 100% 100%, 50px 50px;
+        background-repeat: no-repeat, no-repeat;
+        background-position: center, top right;
+      }}
+      
+      .desc {{
+        text-align: center;
+        font-size: 9px;
+        margin-bottom: 6px;
+        line-height: 1.3;
+      }}
+      
+      .test-info {{
+        font-size: 8px;
+        margin: 6px 0;
+        line-height: 1.4;
+      }}
+      
+      .foot {{
+        margin-top: 8px;
+        font-size: 8px;
+        line-height: 1.4;
+      }}
+      
+      .fssai-block {{
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }}
+      
+      .fssai-logo {{
+        height: 12px;
+        width: auto;
+      }}
+      
+      .label-inner {{
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }}
+    </style>
+    </head>
+    <body>
+      <div class="test-container">
+        <div class="test-label method1">
+          <h3>Method 1: Base64 CSS Background</h3>
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method2">
+          <h3>Method 2: Base64 img tag (absolute)</h3>
+          <img src="data:image/png;base64,{base_frame_b64}" class="frame-img" alt="frame" />
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method3">
+          <h3>Method 3: File URL (absolute)</h3>
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method4">
+          <h3>Method 4: File URL (relative)</h3>
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method5">
+          <h3>Method 5: Base64 img (relative z-index)</h3>
+          <img src="data:image/png;base64,{base_frame_b64}" class="frame-img" alt="frame" />
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method6">
+          <h3>Method 6: Multiple Base64 Backgrounds</h3>
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method7">
+          <h3>Method 7: asset_uri() relative path</h3>
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+        
+        <div class="test-label method8 full-width">
+          <h3>Method 8: asset_uri() file:// URI (for comparison)</h3>
+          <div class="label-inner">
+            {label_content}
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+
 def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
     """Generate full HTML document for PDF generation with multiple labels."""
     label_markup = generate_label_html(data)
     labels = "\n".join(label_markup for _ in range(labels_per_page))
 
     # Load base frame
-    base_frame = image_to_base64(ASSETS_DIR / "base.png")
+    base_frame_uri = asset_uri("base.png")
 
     return f"""
     <!DOCTYPE html>
@@ -295,7 +609,7 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
         font: 11px/1.45 "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
         padding: 12mm 10mm 12mm;
         overflow: hidden;
-        background-image: url("data:image/png;base64,{base_frame}");
+        background-image: url("{base_frame_uri}");
         background-position: left top;
         background-size: 100% 100%;
         background-repeat: no-repeat;
@@ -463,6 +777,41 @@ def label_generator():
     )
 
 
+@app.route("/generate_test_png", methods=["POST"])
+def generate_test_png():
+    """Generate a test PNG with multiple image embedding methods."""
+    submitted = {name: request.form.get(name, "") for name in ALL_FIELD_NAMES}
+    form_values = _merge_defaults(submitted)
+    
+    try:
+        html = generate_test_png_html(form_values)
+        # WeasyPrint: render HTML to document, then write as PNG
+        document = HTML(string=html, base_url=str(BASE_DIR.resolve())).render()
+        png_bytes = document.write_png()
+        png_io = BytesIO(png_bytes)
+        return send_file(
+            png_io,
+            mimetype="image/png",
+            as_attachment=True,
+            download_name="image_test.png",
+        )
+    except Exception as exc:
+        # Fallback: try PDF and convert, or return error
+        try:
+            html = generate_test_png_html(form_values)
+            pdf_bytes = HTML(string=html, base_url=str(BASE_DIR.resolve())).write_pdf()
+            # For now, return PDF if PNG fails (so user can see the test)
+            pdf_io = BytesIO(pdf_bytes)
+            return send_file(
+                pdf_io,
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name="image_test.pdf",
+            )
+        except Exception as e:
+            return jsonify(success=False, error=f"Unable to generate test image: {exc} - {e}"), 500
+
+
 @app.route("/generate_single_pdf", methods=["POST"])
 def generate_single_pdf():
     """Generate an A4 PDF with 4 labels."""
@@ -471,7 +820,7 @@ def generate_single_pdf():
     
     try:
         html = generate_pdf_html(form_values, labels_per_page=4)
-        pdf_bytes = HTML(string=html).write_pdf()
+        pdf_bytes = HTML(string=html, base_url=str(BASE_DIR.resolve())).write_pdf()
         pdf_io = BytesIO(pdf_bytes)
         return send_file(
             pdf_io,

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sadhu-farm
+    env: python
+    plan: free
+    buildCommand: |
+      apt-get update
+      apt-get install -y libcairo2 libgdk-pixbuf2.0-0 libpango-1.0-0 libffi-dev shared-mime-info
+      rm -rf /var/lib/apt/lists/*
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
