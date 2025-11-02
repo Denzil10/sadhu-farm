@@ -6,7 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Dict
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, url_for
 from weasyprint import HTML
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -126,6 +126,44 @@ ALL_FIELD_NAMES = (
 )
 
 app = Flask(__name__)
+
+
+@app.route("/assets/<filename>")
+def serve_asset(filename: str):
+    """Serve asset files via HTTP so WeasyPrint can access them."""
+    asset_path = ASSETS_DIR / filename
+    if asset_path.exists() and asset_path.is_file():
+        # Determine MIME type
+        if filename.lower().endswith('.png'):
+            mimetype = 'image/png'
+        elif filename.lower().endswith(('.jpg', '.jpeg')):
+            mimetype = 'image/jpeg'
+        elif filename.lower().endswith('.gif'):
+            mimetype = 'image/gif'
+        elif filename.lower().endswith('.svg'):
+            mimetype = 'image/svg+xml'
+        else:
+            mimetype = 'application/octet-stream'
+        
+        return send_file(asset_path, mimetype=mimetype)
+    
+    # Try resources fallback
+    try:
+        resource = resources.files("assets").joinpath(filename)
+        if resource.is_file():
+            with resources.as_file(resource) as resource_path:
+                if filename.lower().endswith('.png'):
+                    mimetype = 'image/png'
+                elif filename.lower().endswith(('.jpg', '.jpeg')):
+                    mimetype = 'image/jpeg'
+                else:
+                    mimetype = 'application/octet-stream'
+                return send_file(resource_path, mimetype=mimetype)
+    except Exception:
+        pass
+    
+    app.logger.error("Asset not found: %s", filename)
+    return jsonify(error="Asset not found"), 404
 
 
 def asset_uri(filename: str, use_relative: bool = True) -> str:
@@ -250,27 +288,59 @@ def _normalize_preset_row(row: Dict[str, str]) -> Dict[str, str]:
     return merged
 
 
+def get_image_url(filename: str, use_base64: bool = False) -> str:
+    """Get image URL - tries HTTP route first, falls back to base64.
+    
+    Args:
+        filename: Name of image file
+        use_base64: If True, always use base64. If False, prefer HTTP URL.
+    
+    Returns:
+        URL string (either http://... or data:image/png;base64,...)
+    """
+    # Try to use HTTP route (works best with WeasyPrint on servers)
+    if not use_base64:
+        # Use HTTP URL that WeasyPrint can fetch
+        try:
+            # Get the current request host or use a default
+            base_url = request.host_url.rstrip('/') if hasattr(request, 'host_url') else 'http://localhost:5001'
+            asset_url = f"{base_url}/assets/{filename}"
+            app.logger.debug("Using HTTP URL for %s: %s", filename, asset_url)
+            return asset_url
+        except Exception as e:
+            app.logger.debug("Could not generate HTTP URL, falling back to base64: %s", e)
+    
+    # Fallback to base64 encoding
+    base64_data = asset_to_base64(filename)
+    if base64_data:
+        uri = f"data:image/png;base64,{base64_data}"
+        app.logger.debug("Using base64 data URI for %s", filename)
+        return uri
+    
+    app.logger.warning("Could not load image %s via HTTP or base64", filename)
+    return ""
+
+
 def generate_label_html(data: Dict[str, str]) -> str:
     """Generate HTML for a single label with the given data."""
-    # Use base64 encoding - most reliable method that works everywhere
-    # File paths often fail on server environments like Render.com
-    base_frame_b64 = asset_to_base64("base.png")
-    fssai_logo_b64 = asset_to_base64("fssai.png")
+    # Try HTTP URLs first (works best on servers), fall back to base64
+    base_frame_uri = get_image_url("base.png", use_base64=False)
+    fssai_logo_uri = get_image_url("fssai.png", use_base64=False)
     
-    # Build URIs - use base64 data URI if available, otherwise empty string
-    base_frame_uri = f"data:image/png;base64,{base_frame_b64}" if base_frame_b64 else ""
-    fssai_logo_uri = f"data:image/png;base64,{fssai_logo_b64}" if fssai_logo_b64 else ""
-    
-    # Log warnings if images are missing (but continue rendering)
-    if not base_frame_b64:
-        app.logger.warning("Base frame image (base.png) not found - label will render without background frame")
+    # If HTTP URLs didn't work, try base64 fallback
+    if not base_frame_uri:
+        base_frame_uri = get_image_url("base.png", use_base64=True)
+        if not base_frame_uri:
+            app.logger.warning("Base frame image (base.png) not found - label will render without background frame")
     else:
-        app.logger.debug("Base frame image loaded successfully")
+        app.logger.debug("Base frame image URL generated successfully")
         
-    if not fssai_logo_b64:
-        app.logger.warning("FSSAI logo (fssai.png) not found - label will render without logo")
+    if not fssai_logo_uri:
+        fssai_logo_uri = get_image_url("fssai.png", use_base64=True)
+        if not fssai_logo_uri:
+            app.logger.warning("FSSAI logo (fssai.png) not found - label will render without logo")
     else:
-        app.logger.debug("FSSAI logo loaded successfully")
+        app.logger.debug("FSSAI logo URL generated successfully")
     
     # Only include image tag if logo URI is available
     fssai_img_tag = (
@@ -646,14 +716,15 @@ def generate_pdf_html(data: Dict[str, str], labels_per_page: int = 4) -> str:
     label_markup = generate_label_html(data)
     labels = "\n".join(label_markup for _ in range(labels_per_page))
 
-    # Load base frame - use base64 encoding (most reliable on all platforms)
-    base_frame_b64 = asset_to_base64("base.png")
-    base_frame_uri = f"data:image/png;base64,{base_frame_b64}" if base_frame_b64 else ""
+    # Get base frame URL - try HTTP route first, fall back to base64
+    base_frame_uri = get_image_url("base.png", use_base64=False)
+    if not base_frame_uri:
+        base_frame_uri = get_image_url("base.png", use_base64=True)
     
-    if not base_frame_b64:
+    if not base_frame_uri:
         app.logger.warning("Base frame image (base.png) not found - labels will render without background frame")
     else:
-        app.logger.debug("Base frame image loaded successfully for PDF generation")
+        app.logger.debug("Base frame image URL generated successfully for PDF generation")
 
     return f"""
     <!DOCTYPE html>
@@ -864,8 +935,9 @@ def generate_test_png():
     
     try:
         html = generate_test_png_html(form_values)
-        # WeasyPrint: render HTML to document, then write as PNG
-        document = HTML(string=html, base_url=str(BASE_DIR.resolve())).render()
+        # Use request URL as base_url so WeasyPrint can fetch /assets/ images via HTTP
+        base_url = request.url_root.rstrip('/') if request else 'http://localhost:5001'
+        document = HTML(string=html, base_url=base_url).render()
         png_bytes = document.write_png()
         png_io = BytesIO(png_bytes)
         return send_file(
@@ -878,7 +950,9 @@ def generate_test_png():
         # Fallback: try PDF and convert, or return error
         try:
             html = generate_test_png_html(form_values)
-            pdf_bytes = HTML(string=html, base_url=str(BASE_DIR.resolve())).write_pdf()
+            # Use request URL as base_url so WeasyPrint can fetch /assets/ images via HTTP
+            base_url = request.url_root.rstrip('/') if request else 'http://localhost:5001'
+            pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
             # For now, return PDF if PNG fails (so user can see the test)
             pdf_io = BytesIO(pdf_bytes)
             return send_file(
@@ -899,7 +973,9 @@ def generate_single_pdf():
     
     try:
         html = generate_pdf_html(form_values, labels_per_page=4)
-        pdf_bytes = HTML(string=html, base_url=str(BASE_DIR.resolve())).write_pdf()
+        # Use request URL as base_url so WeasyPrint can fetch /assets/ images via HTTP
+        base_url = request.url_root.rstrip('/') if request else 'http://localhost:5001'
+        pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
         pdf_io = BytesIO(pdf_bytes)
         return send_file(
             pdf_io,
