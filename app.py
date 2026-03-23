@@ -1004,17 +1004,17 @@ def save_preset():
     product_name = form_data.get("product_name", "").strip()
     if not product_name:
         return jsonify(success=False, error="Product name is required to save a preset."), 400
-    if product_name in presets:
-        return jsonify(
-            success=False,
-            error="A preset with this product name already exists. Choose a unique name.",
-        ), 409
-
+    
+    # Allow overwriting existing presets (for editing)
+    is_update = product_name in presets
+    
     normalized = _merge_defaults(form_data)
     normalized["product_name"] = product_name
     presets[product_name] = normalized
     save_presets(presets)
-    return jsonify(success=True, product_name=product_name, total=len(presets))
+    
+    message = "updated" if is_update else "saved"
+    return jsonify(success=True, product_name=product_name, total=len(presets), updated=is_update, message=f"Preset '{product_name}' {message} successfully.")
 
 
 # For Vercel deployment

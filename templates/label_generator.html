@@ -549,7 +549,9 @@
           alert(message);
           return;
         }
-        alert(`Preset “${payload.product_name}” saved.`);
+        // Use the message from the server (saved vs updated)
+        const message = payload.message || `Preset "${payload.product_name}" saved.`;
+        alert(message);
         window.location.search = `?preset=${encodeURIComponent(payload.product_name)}`;
       } catch (err) {
         console.error("Save preset error:", err);
